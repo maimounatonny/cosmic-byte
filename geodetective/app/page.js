@@ -11,7 +11,7 @@ const investigationTypes = [
     description:
       "Discover how environmental variables change over time and whether those changes are significant.",
     icon: "↗",
-    example: "Is Qatar becoming hotter?",
+    example: "Explore changes in temperature over time.",
     number: "01",
   },
   {
@@ -20,161 +20,169 @@ const investigationTypes = [
     description:
       "Explore how different environmental variables relate to one another.",
     icon: "⇄",
-    example: "Does rainfall relate to temperature?",
+    example: "Compare rainfall and temperature.",
     number: "02",
   },
   {
     id: "explanation",
     title: "Environmental Explanation",
     description:
-      "Investigate possible environmental factors behind changes happening on Earth.",
+      "Investigate environmental factors associated with changes in a selected variable.",
     icon: "✧",
-    example: "Why is rainfall decreasing?",
+    example: "Discover factors related to rainfall.",
     number: "03",
   },
 ];
 
-const exampleQuestions = [
-  // TREND ANALYSIS
-  {
-    question: "Is drought becoming more frequent?",
-    type: "trend",
-    scenarioId: "drought_trend",
-  },
-  {
-    question: "Is global temperature increasing?",
-    type: "trend",
-    scenarioId: "temperature_trend",
-  },
+const countries = [
+  "Qatar",
+  "India",
+  "Bangladesh",
+  "United States",
+  "United Kingdom",
+];
 
-  // RELATIONSHIP ANALYSIS
+const variables = [
+  { id: "T2M", label: "Air Temperature", unit: "°C" },
+  { id: "T2M_MAX", label: "Maximum Air Temperature", unit: "°C" },
+  { id: "T2M_MIN", label: "Minimum Air Temperature", unit: "°C" },
+  { id: "PRECTOTCORR", label: "Rainfall / Precipitation", unit: "mm/day" },
+  { id: "RH2M", label: "Relative Humidity", unit: "%" },
+  { id: "T2MDEW", label: "Dew Point Temperature", unit: "°C" },
   {
-    question: "Does rainfall relate to temperature?",
-    type: "relationship",
-    scenarioId: "rainfall_temperature",
+    id: "ALLSKY_SFC_SW_DWN",
+    label: "Solar Radiation",
+    unit: "kWh/m²/day",
   },
-  {
-    question: "Does humidity relate to temperature?",
-    type: "relationship",
-    scenarioId: "humidity_temperature",
-  },
-  {
-    question: "Does dew point relate to air temperature?",
-    type: "relationship",
-    scenarioId: "dewpoint_temperature",
-  },
-  {
-    question: "Does solar radiation relate to temperature?",
-    type: "relationship",
-    scenarioId: "solar_temperature",
-  },
-  {
-    question: "Does wind speed relate to temperature?",
-    type: "relationship",
-    scenarioId: "wind_temperature",
-  },
-
-  // ENVIRONMENTAL EXPLANATION
-  {
-    question: "Why is rainfall decreasing?",
-    type: "explanation",
-    scenarioId: "rainfall_explanation",
-  },
-  {
-    question: "Why is temperature increasing?",
-    type: "explanation",
-    scenarioId: "temperature_explanation",
-  },
-  {
-    question: "Why is humidity changing?",
-    type: "explanation",
-    scenarioId: "humidity_explanation",
-  },
+  { id: "WS10M", label: "Wind Speed", unit: "m/s" },
+  { id: "QV2M", label: "Specific Humidity", unit: "g/kg" },
+  { id: "TS", label: "Earth Skin Temperature", unit: "°C" },
 ];
 
 const processSteps = [
   {
     number: "01",
     icon: "⌕",
-    title: "Ask a Question",
+    title: "Choose an Investigation",
     description:
-      "Describe an environmental problem or phenomenon you want to understand.",
+      "Select whether you want to study trends, compare variables or investigate environmental relationships.",
   },
   {
     number: "02",
     icon: "◈",
-    title: "Discover Variables",
+    title: "Select NASA Variables",
     description:
-      "Find relevant Earth science variables and explore available NASA datasets.",
+      "Choose environmental measurements from the available NASA POWER dataset.",
   },
   {
     number: "03",
     icon: "↗",
     title: "Analyze the Data",
     description:
-      "Examine environmental trends, statistical significance and relationships.",
+      "Retrieve measurements and examine environmental trends and statistical relationships.",
   },
   {
     number: "04",
     icon: "◎",
     title: "Explore Insights",
     description:
-      "Understand patterns through interactive visualizations and scientific findings.",
+      "Understand patterns through visualizations, statistical findings and related variables.",
   },
 ];
 
-const HomePage = () => {
+const currentYear = 2024;
+const firstYear = 1981;
+
+const yearOptions = Array.from(
+  { length: currentYear - firstYear + 1 },
+  (_, index) => String(firstYear + index),
+);
+
+export default function HomePage() {
   const router = useRouter();
 
   const [selectedType, setSelectedType] = useState("");
-  const [question, setQuestion] = useState("");
-  const [selectedScenarioId, setSelectedScenarioId] = useState("");
+  const [country, setCountry] = useState("Qatar");
+  const [mainVariable, setMainVariable] = useState("T2M");
+  const [secondVariable, setSecondVariable] = useState("PRECTOTCORR");
+  const [startYear, setStartYear] = useState("1981");
+  const [endYear, setEndYear] = useState("2024");
+  const [formError, setFormError] = useState("");
 
   const selectedInvestigation = investigationTypes.find(
-    (type) => type.id === selectedType,
+    (item) => item.id === selectedType,
   );
 
   const handleTypeSelection = (typeId) => {
     setSelectedType(typeId);
-    setQuestion("");
-    setSelectedScenarioId("");
+    setFormError("");
   };
 
   const startInvestigation = (event) => {
     event.preventDefault();
+    setFormError("");
 
-    if (!selectedType || !question.trim()) {
+    if (!selectedType) {
+      setFormError("Please select an investigation type.");
+      return;
+    }
+
+    if (!country || !mainVariable) {
+      setFormError("Please select a location and environmental variable.");
+      return;
+    }
+
+    if (selectedType === "relationship" && !secondVariable) {
+      setFormError("Please select the second environmental variable.");
+      return;
+    }
+
+    if (selectedType === "relationship" && mainVariable === secondVariable) {
+      setFormError("Please select two different environmental variables.");
+      return;
+    }
+
+    const start = Number(startYear);
+    const end = Number(endYear);
+
+    if (start > end) {
+      setFormError("The start year cannot be later than the end year.");
+      return;
+    }
+
+    if (end - start + 1 < 10) {
+      setFormError("Please select a study period covering at least 10 years.");
       return;
     }
 
     const params = new URLSearchParams({
       type: selectedType,
-      question: question.trim(),
+      country,
+      variable: mainVariable,
+      startYear,
+      endYear,
     });
 
-    if (selectedScenarioId) {
-      params.set("scenarioId", selectedScenarioId);
+    if (selectedType === "relationship") {
+      params.set("secondVariable", secondVariable);
     }
 
     router.push(`/investigate?${params.toString()}`);
   };
 
-  const handleExampleClick = (example) => {
-    setSelectedType(example.type);
-    setQuestion(example.question);
-    setSelectedScenarioId(example.scenarioId);
+  const handleExampleClick = (type, variable, second = "") => {
+    setSelectedType(type);
+    setMainVariable(variable);
+
+    if (second) {
+      setSecondVariable(second);
+    }
+
+    setFormError("");
 
     document
       .getElementById("investigation-form")
       ?.scrollIntoView({ behavior: "smooth", block: "center" });
-  };
-
-  const handleQuestionChange = (event) => {
-    setQuestion(event.target.value);
-
-    // If the user edits a predefined question,
-    // remove its fixed scenario mapping.
-    setSelectedScenarioId("");
   };
 
   return (
@@ -218,9 +226,9 @@ const HomePage = () => {
           </h1>
 
           <p className="hero-description">
-            Turn your environmental questions into scientific investigations.
-            Discover NASA data, uncover trends, and explore the relationships
-            behind Earth's changing systems.
+            Turn environmental measurements into scientific insights. Explore
+            NASA data, uncover trends and investigate the relationships behind
+            Earth's changing systems.
           </p>
 
           <div className="hero-highlights">
@@ -303,7 +311,7 @@ const HomePage = () => {
             })}
           </div>
 
-          {/* QUESTION FORM */}
+          {/* DROPDOWN INVESTIGATION FORM */}
 
           {selectedInvestigation && (
             <form
@@ -315,9 +323,11 @@ const HomePage = () => {
                 <div className="form-heading-icon">✧</div>
 
                 <div>
-                  <span className="form-step-label">YOUR INVESTIGATION</span>
+                  <span className="form-step-label">
+                    INVESTIGATION PARAMETERS
+                  </span>
 
-                  <h3>Tell us what you want to discover</h3>
+                  <h3>Configure your investigation</h3>
                 </div>
               </div>
 
@@ -326,31 +336,149 @@ const HomePage = () => {
                 {selectedInvestigation.title}
               </div>
 
-              <label htmlFor="environmental-question">
-                Describe your environmental question
-              </label>
+              {/* LOCATION */}
 
-              <textarea
-                id="environmental-question"
-                value={question}
-                onChange={handleQuestionChange}
-                placeholder={selectedInvestigation.example}
-                rows={3}
-                maxLength={500}
-                required
-              />
+              <div className="form-field">
+                <label htmlFor="country">Select location</label>
+
+                <select
+                  id="country"
+                  value={country}
+                  onChange={(event) => setCountry(event.target.value)}
+                >
+                  {countries.map((item) => (
+                    <option key={item} value={item}>
+                      {item}
+                    </option>
+                  ))}
+                </select>
+
+                <span className="input-hint">
+                  Choose the country whose environmental measurements you want
+                  to investigate.
+                </span>
+              </div>
+
+              {/* MAIN VARIABLE */}
+
+              <div className="form-field">
+                <label htmlFor="main-variable">
+                  {selectedType === "relationship"
+                    ? "Select the first environmental variable"
+                    : "Select environmental variable"}
+                </label>
+
+                <select
+                  id="main-variable"
+                  value={mainVariable}
+                  onChange={(event) => setMainVariable(event.target.value)}
+                >
+                  {variables.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label} ({item.unit})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* SECOND VARIABLE */}
+
+              {selectedType === "relationship" && (
+                <div className="form-field">
+                  <label htmlFor="second-variable">
+                    Select the second environmental variable
+                  </label>
+
+                  <select
+                    id="second-variable"
+                    value={secondVariable}
+                    onChange={(event) => setSecondVariable(event.target.value)}
+                  >
+                    {variables.map((item) => (
+                      <option
+                        key={item.id}
+                        value={item.id}
+                        disabled={item.id === mainVariable}
+                      >
+                        {item.label} ({item.unit})
+                      </option>
+                    ))}
+                  </select>
+
+                  <span className="input-hint">
+                    Choose a different variable to compare with the first one.
+                  </span>
+                </div>
+              )}
+
+              {/* EXPLANATION INFORMATION */}
+
+              {selectedType === "explanation" && (
+                <div className="selected-type-message">
+                  <span className="selected-check">✓</span>
+                  The application will automatically examine other available
+                  environmental variables related to your selected variable.
+                </div>
+              )}
+
+              {/* STUDY PERIOD */}
+
+              <div className="form-field">
+                <label>Choose study period</label>
+
+                <div className="year-selection">
+                  <div>
+                    <label htmlFor="start-year">Start year</label>
+
+                    <select
+                      id="start-year"
+                      value={startYear}
+                      onChange={(event) => setStartYear(event.target.value)}
+                    >
+                      {yearOptions.map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="end-year">End year</label>
+
+                    <select
+                      id="end-year"
+                      value={endYear}
+                      onChange={(event) => setEndYear(event.target.value)}
+                    >
+                      {yearOptions.map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <span className="input-hint">
+                  Available study period: 1981–2024. At least 10 years are
+                  required for this investigation.
+                </span>
+              </div>
+
+              {formError && (
+                <div className="form-error" role="alert">
+                  {formError}
+                </div>
+              )}
 
               <div className="form-bottom">
                 <span className="input-hint">
-                  Be specific about the environmental change you want to
-                  investigate.
+                  Your selections will determine which NASA measurements are
+                  retrieved and analyzed.
                 </span>
 
-                <button
-                  type="submit"
-                  className="start-button"
-                  disabled={!question.trim()}
-                >
+                <button type="submit" className="start-button">
                   Start Investigation
                   <span>→</span>
                 </button>
@@ -358,26 +486,54 @@ const HomePage = () => {
             </form>
           )}
 
-          {/* EXAMPLE QUESTIONS */}
+          {/* EXAMPLE SHORTCUTS */}
 
           <div className="example-questions">
             <div className="example-heading">
               <span className="example-sparkle">✳</span>
-              Need inspiration? Try asking:
+              Need inspiration? Try an example:
             </div>
 
             <div className="example-question-list">
-              {exampleQuestions.map((example) => (
-                <button
-                  key={example.scenarioId}
-                  type="button"
-                  onClick={() => handleExampleClick(example)}
-                  className="example-chip"
-                >
-                  {example.question}
-                  <span>↗</span>
-                </button>
-              ))}
+              <button
+                type="button"
+                className="example-chip"
+                onClick={() => handleExampleClick("trend", "T2M")}
+              >
+                Explore temperature trends
+                <span>↗</span>
+              </button>
+
+              <button
+                type="button"
+                className="example-chip"
+                onClick={() =>
+                  handleExampleClick("relationship", "T2M", "PRECTOTCORR")
+                }
+              >
+                Compare temperature and rainfall
+                <span>↗</span>
+              </button>
+
+              <button
+                type="button"
+                className="example-chip"
+                onClick={() => handleExampleClick("explanation", "PRECTOTCORR")}
+              >
+                Investigate rainfall patterns
+                <span>↗</span>
+              </button>
+
+              <button
+                type="button"
+                className="example-chip"
+                onClick={() =>
+                  handleExampleClick("relationship", "T2M", "RH2M")
+                }
+              >
+                Compare temperature and humidity
+                <span>↗</span>
+              </button>
             </div>
           </div>
         </div>
@@ -437,6 +593,4 @@ const HomePage = () => {
       </footer>
     </main>
   );
-};
-
-export default HomePage;
+}

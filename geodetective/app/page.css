@@ -1002,3 +1002,68 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* DROPDOWN INVESTIGATION FORM */
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  margin-top: 22px;
+  width: 100%;
+}
+
+.form-field > label {
+  font-weight: 600;
+}
+
+.form-field select {
+  width: 100%;
+  min-height: 48px;
+  padding: 12px 14px;
+  border: 1px solid #d7dce3;
+  border-radius: 8px;
+  background: #fff;
+  color: #252b36;
+  font: inherit;
+  cursor: pointer;
+}
+
+.form-field select:focus {
+  outline: 2px solid #8b9dbb;
+  outline-offset: 2px;
+}
+
+.year-selection {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.year-selection > div {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.year-selection label {
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.year-selection select {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px;
+  border: 1px solid #d7dce3;
+  border-radius: 8px;
+  background: #fff;
+  color: #252b36;
+  font: inherit;
+}
+
+@media (max-width: 600px) {
+  .year-selection {
+    grid-template-columns: 1fr;
+  }
+}

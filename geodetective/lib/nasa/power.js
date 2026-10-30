@@ -1,8 +1,7 @@
 const NASA_POWER_URL = "https://power.larc.nasa.gov/api/temporal/daily/point";
 
-// Selected countries and their sample locations.
-// These locations are representative samples, not a complete
-// or area-weighted coverage of each country.
+const MIN_YEAR = 1981;
+const MAX_YEAR = 2024;
 
 const COUNTRY_LOCATIONS = {
   qatar: {
@@ -16,7 +15,6 @@ const COUNTRY_LOCATIONS = {
       { name: "Abu Samra", latitude: 24.74, longitude: 50.84 },
     ],
   },
-
   india: {
     name: "India",
     aliases: ["india"],
@@ -28,7 +26,6 @@ const COUNTRY_LOCATIONS = {
       { name: "Bengaluru", latitude: 12.9716, longitude: 77.5946 },
     ],
   },
-
   bangladesh: {
     name: "Bangladesh",
     aliases: ["bangladesh"],
@@ -40,7 +37,6 @@ const COUNTRY_LOCATIONS = {
       { name: "Sylhet", latitude: 24.8949, longitude: 91.8687 },
     ],
   },
-
   "united states": {
     name: "United States",
     aliases: ["united states", "usa", "us", "u.s.a.", "u.s."],
@@ -52,7 +48,6 @@ const COUNTRY_LOCATIONS = {
       { name: "Los Angeles", latitude: 34.0522, longitude: -118.2437 },
     ],
   },
-
   "united kingdom": {
     name: "United Kingdom",
     aliases: ["united kingdom", "uk", "u.k.", "britain", "great britain"],
@@ -66,28 +61,80 @@ const COUNTRY_LOCATIONS = {
   },
 };
 
-const TEMPERATURE_VARIABLES = [
+export const ENVIRONMENTAL_VARIABLES = [
   {
     id: "T2M",
     name: "Average Air Temperature",
     unit: "°C",
+    description: "Daily average air temperature at 2 metres.",
+    category: "Temperature",
   },
   {
     id: "T2M_MAX",
     name: "Maximum Air Temperature",
     unit: "°C",
+    description: "Daily maximum air temperature at 2 metres.",
+    category: "Temperature",
   },
   {
     id: "T2M_MIN",
     name: "Minimum Air Temperature",
     unit: "°C",
+    description: "Daily minimum air temperature at 2 metres.",
+    category: "Temperature",
+  },
+  {
+    id: "PRECTOTCORR",
+    name: "Corrected Precipitation",
+    unit: "mm/day",
+    description: "Daily corrected precipitation.",
+    category: "Water and moisture",
+  },
+  {
+    id: "RH2M",
+    name: "Relative Humidity",
+    unit: "%",
+    description: "Relative humidity at 2 metres.",
+    category: "Water and moisture",
+  },
+  {
+    id: "T2MDEW",
+    name: "Dew Point Temperature",
+    unit: "°C",
+    description: "Temperature at which air becomes saturated.",
+    category: "Temperature-related",
+  },
+  {
+    id: "ALLSKY_SFC_SW_DWN",
+    name: "Solar Radiation",
+    unit: "kWh/m²/day",
+    description: "Incoming shortwave solar radiation under all-sky conditions.",
+    category: "Solar radiation",
+  },
+  {
+    id: "WS10M",
+    name: "Wind Speed at 10 Metres",
+    unit: "m/s",
+    description: "Average wind speed at 10 metres above the surface.",
+    category: "Wind",
+  },
+  {
+    id: "QV2M",
+    name: "Specific Humidity",
+    unit: "g/kg",
+    description: "Amount of water vapour in the air.",
+    category: "Water and moisture",
+  },
+  {
+    id: "TS",
+    name: "Earth Skin Temperature",
+    unit: "°C",
+    description: "Temperature of the Earth's surface.",
+    category: "Temperature-related",
   },
 ];
 
-// Curated NASA POWER variables for the correlation explorer.
-// T2M is retrieved alongside these variables because it is
-// the reference variable for the correlation calculations.
-
+// Retained for compatibility with the existing correlation explorer/API.
 export const RELATED_VARIABLES = [
   {
     id: "PRECTOTCORR",
@@ -113,24 +160,21 @@ export const RELATED_VARIABLES = [
   {
     id: "T2MDEW",
     name: "Dew Point Temperature",
-    description:
-      "Temperature at which air becomes saturated with water vapour.",
+    description: "Temperature at which air becomes saturated.",
     unit: "°C",
     category: "Temperature-related",
   },
   {
     id: "T2MWET",
     name: "Wet-Bulb Temperature",
-    description:
-      "Temperature accounting for the cooling effect of evaporation.",
+    description: "Temperature accounting for evaporative cooling.",
     unit: "°C",
     category: "Temperature-related",
   },
   {
     id: "T2M_RANGE",
     name: "Daily Temperature Range",
-    description:
-      "Difference between daily maximum and minimum air temperature.",
+    description: "Difference between daily maximum and minimum temperature.",
     unit: "°C",
     category: "Temperature-related",
   },
@@ -144,14 +188,14 @@ export const RELATED_VARIABLES = [
   {
     id: "WS10M",
     name: "Wind Speed at 10 Metres",
-    description: "Average wind speed at 10 metres above the surface.",
+    description: "Average wind speed at 10 metres.",
     unit: "m/s",
     category: "Wind",
   },
   {
     id: "WS50M",
     name: "Wind Speed at 50 Metres",
-    description: "Average wind speed at 50 metres above the surface.",
+    description: "Average wind speed at 50 metres.",
     unit: "m/s",
     category: "Wind",
   },
@@ -165,18 +209,31 @@ export const RELATED_VARIABLES = [
   {
     id: "ALLSKY_SFC_SW_DWN",
     name: "Shortwave Solar Radiation",
-    description: "Incoming shortwave solar radiation under all-sky conditions.",
+    description: "Incoming shortwave solar radiation.",
     unit: "kWh/m²/day",
     category: "Solar radiation",
   },
   {
     id: "ALLSKY_SFC_LW_DWN",
     name: "Longwave Radiation",
-    description: "Incoming longwave radiation under all-sky conditions.",
+    description: "Incoming longwave radiation.",
     unit: "W/m²",
     category: "Solar radiation",
   },
 ];
+
+const LEGACY_VARIABLE_INFO = {
+  T2M: ENVIRONMENTAL_VARIABLES.find((item) => item.id === "T2M"),
+  ...Object.fromEntries(RELATED_VARIABLES.map((item) => [item.id, item])),
+};
+
+export function getVariableInfo(variableId) {
+  return (
+    ENVIRONMENTAL_VARIABLES.find((item) => item.id === variableId) ||
+    LEGACY_VARIABLE_INFO[variableId] ||
+    null
+  );
+}
 
 function normalizeCountry(country) {
   if (!country || typeof country !== "string") {
@@ -187,48 +244,54 @@ function normalizeCountry(country) {
 
   for (const [key, countryInfo] of Object.entries(COUNTRY_LOCATIONS)) {
     if (key === normalized || countryInfo.aliases.includes(normalized)) {
-      return {
-        key,
-        ...countryInfo,
-      };
+      return { key, ...countryInfo };
     }
   }
 
   throw new Error(
-    `Temperature analysis is currently available for: ${Object.values(
+    `This country is not supported. Available countries: ${Object.values(
       COUNTRY_LOCATIONS,
     )
-      .map((country) => country.name)
+      .map((item) => item.name)
       .join(", ")}.`,
   );
 }
 
-function formatDate(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+function getDateRange(startYear, endYear) {
+  if (
+    !Number.isInteger(startYear) ||
+    !Number.isInteger(endYear) ||
+    startYear < MIN_YEAR ||
+    endYear > MAX_YEAR ||
+    endYear < startYear ||
+    endYear - startYear + 1 < 10
+  ) {
+    throw new Error(
+      `Please select a study period between ${MIN_YEAR} and ${MAX_YEAR} containing at least 10 years.`,
+    );
+  }
 
-  return `${year}${month}${day}`;
+  return {
+    startDate: `${startYear}0101`,
+    endDate: `${endYear}1231`,
+  };
 }
 
 function getValidValue(value) {
+  if (value === null || value === undefined) return null;
+
   const number = Number(value);
 
-  if (
-    value === null ||
-    value === undefined ||
-    !Number.isFinite(number) ||
-    number === -999
-  ) {
+  if (!Number.isFinite(number) || number === -999) {
     return null;
   }
 
   return number;
 }
 
-async function fetchPointTemperatureData(point, startDate, endDate) {
+async function fetchPointData(point, variableIds, startDate, endDate) {
   const params = new URLSearchParams({
-    parameters: "T2M,T2M_MAX,T2M_MIN",
+    parameters: variableIds.join(","),
     community: "RE",
     longitude: String(point.longitude),
     latitude: String(point.latitude),
@@ -239,9 +302,7 @@ async function fetchPointTemperatureData(point, startDate, endDate) {
   });
 
   const response = await fetch(`${NASA_POWER_URL}?${params.toString()}`, {
-    headers: {
-      Accept: "application/json",
-    },
+    headers: { Accept: "application/json" },
     cache: "no-store",
   });
 
@@ -252,7 +313,9 @@ async function fetchPointTemperatureData(point, startDate, endDate) {
   try {
     result = JSON.parse(responseText);
   } catch {
-    throw new Error(`NASA returned an invalid response for ${point.name}.`);
+    throw new Error(
+      `NASA POWER returned an invalid response for ${point.name}.`,
+    );
   }
 
   if (!response.ok) {
@@ -268,71 +331,14 @@ async function fetchPointTemperatureData(point, startDate, endDate) {
   const parameterData = result.properties?.parameter;
 
   if (!parameterData) {
-    throw new Error(`No temperature measurements returned for ${point.name}.`);
+    throw new Error(`No measurements were returned for ${point.name}.`);
   }
 
-  return {
-    point: point.name,
-    parameters: parameterData,
-  };
-}
+  const missingVariables = variableIds.filter((id) => !parameterData[id]);
 
-// Retrieves the reference temperature and all selected related
-// variables together for one sample location.
-async function fetchPointRelatedData(point, startDate, endDate) {
-  const parameterIds = [
-    "T2M",
-    ...RELATED_VARIABLES.map((variable) => variable.id),
-  ];
-
-  const params = new URLSearchParams({
-    parameters: parameterIds.join(","),
-    community: "RE",
-    longitude: String(point.longitude),
-    latitude: String(point.latitude),
-    start: startDate,
-    end: endDate,
-    format: "JSON",
-    "time-standard": "UTC",
-  });
-
-  const response = await fetch(`${NASA_POWER_URL}?${params.toString()}`, {
-    headers: {
-      Accept: "application/json",
-    },
-    cache: "no-store",
-  });
-
-  const responseText = await response.text();
-
-  let result;
-
-  try {
-    result = JSON.parse(responseText);
-  } catch {
+  if (missingVariables.length > 0) {
     throw new Error(
-      `NASA returned an invalid related-variable response for ${point.name}.`,
-    );
-  }
-
-  if (!response.ok) {
-    console.error(
-      `NASA POWER related-variable error for ${point.name}:`,
-      result,
-    );
-
-    throw new Error(
-      `NASA POWER could not retrieve the related variables for ${point.name}: ${
-        result?.messages ? JSON.stringify(result.messages) : response.status
-      }`,
-    );
-  }
-
-  const parameterData = result.properties?.parameter;
-
-  if (!parameterData) {
-    throw new Error(
-      `No related-variable measurements returned for ${point.name}.`,
+      `NASA POWER did not return these requested parameters for ${point.name}: ${missingVariables.join(", ")}.`,
     );
   }
 
@@ -342,134 +348,50 @@ async function fetchPointRelatedData(point, startDate, endDate) {
   };
 }
 
-function getDateRange(startYear, endYear) {
-  if (
-    !Number.isInteger(startYear) ||
-    !Number.isInteger(endYear) ||
-    startYear < 1981 ||
-    endYear < startYear
-  ) {
-    throw new Error("Invalid temperature analysis date range.");
-  }
-
-  const today = new Date();
-
-  const requestedEndDate = new Date(endYear, 11, 31);
-
-  const actualEndDate = requestedEndDate > today ? today : requestedEndDate;
-
-  return {
-    startDate: `${startYear}0101`,
-    endDate: formatDate(actualEndDate),
-  };
-}
-
-export async function getCountryTemperatureData({
+/**
+ * Retrieves selected NASA POWER daily variables for the five
+ * representative locations of a country.
+ *
+ * Each date is averaged across the available sample locations.
+ */
+export async function getCountryEnvironmentalData({
   country = "Qatar",
+  variableIds = ["T2M"],
   startYear = 1981,
-  endYear = new Date().getFullYear(),
+  endYear = 2024,
 } = {}) {
   const selectedCountry = normalizeCountry(country);
   const { startDate, endDate } = getDateRange(startYear, endYear);
 
-  // Retrieve measurements for the five selected locations.
-  const pointResults = await Promise.all(
-    selectedCountry.points.map((point) =>
-      fetchPointTemperatureData(point, startDate, endDate),
-    ),
-  );
-
-  // Combine measurements from all sample locations by date.
-  const dailyData = new Map();
-
-  for (const pointResult of pointResults) {
-    for (const variable of TEMPERATURE_VARIABLES) {
-      const values = pointResult.parameters[variable.id];
-
-      if (!values) continue;
-
-      for (const [date, rawValue] of Object.entries(values)) {
-        const value = getValidValue(rawValue);
-
-        if (value === null) continue;
-
-        if (!dailyData.has(date)) {
-          dailyData.set(date, {
-            date,
-            T2M_values: [],
-            T2M_MAX_values: [],
-            T2M_MIN_values: [],
-          });
-        }
-
-        dailyData.get(date)[`${variable.id}_values`].push(value);
-      }
-    }
+  if (!Array.isArray(variableIds) || variableIds.length === 0) {
+    throw new Error("Please select at least one environmental variable.");
   }
 
-  const observations = Array.from(dailyData.values())
-    .map((day) => {
-      const observation = {
-        date: day.date,
-      };
+  const uniqueVariableIds = [...new Set(variableIds)];
 
-      for (const variable of TEMPERATURE_VARIABLES) {
-        const values = day[`${variable.id}_values`];
+  const unsupportedVariables = uniqueVariableIds.filter(
+    (id) => !getVariableInfo(id),
+  );
 
-        observation[variable.id] =
-          values.length > 0
-            ? values.reduce((sum, value) => sum + value, 0) / values.length
-            : null;
-
-        observation[`${variable.id}_pointCount`] = values.length;
-      }
-
-      return observation;
-    })
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  return {
-    location: selectedCountry.name,
-    startDate,
-    endDate,
-    sampledLocations: selectedCountry.points,
-    variables: TEMPERATURE_VARIABLES,
-    observations,
-    observationCount: observations.length,
-    source: "NASA POWER",
-    spatialMethod: `Average of available measurements from ${selectedCountry.points.length} sample locations`,
-  };
-}
-
-// Retrieves T2M and the 12 related variables for the selected country.
-export async function getCountryRelatedVariableData({
-  country = "Qatar",
-  startYear = 1981,
-  endYear = new Date().getFullYear(),
-} = {}) {
-  const selectedCountry = normalizeCountry(country);
-  const { startDate, endDate } = getDateRange(startYear, endYear);
+  if (unsupportedVariables.length > 0) {
+    throw new Error(
+      `Unsupported NASA variables: ${unsupportedVariables.join(", ")}`,
+    );
+  }
 
   const pointResults = await Promise.all(
     selectedCountry.points.map((point) =>
-      fetchPointRelatedData(point, startDate, endDate),
+      fetchPointData(point, uniqueVariableIds, startDate, endDate),
     ),
   );
-
-  const allVariableIds = [
-    "T2M",
-    ...RELATED_VARIABLES.map((variable) => variable.id),
-  ];
 
   const dailyData = new Map();
 
   for (const pointResult of pointResults) {
-    for (const variableId of allVariableIds) {
+    for (const variableId of uniqueVariableIds) {
       const values = pointResult.parameters[variableId];
 
-      if (!values) continue;
-
-      for (const [date, rawValue] of Object.entries(values)) {
+      for (const [date, rawValue] of Object.entries(values || {})) {
         const value = getValidValue(rawValue);
 
         if (value === null) continue;
@@ -477,7 +399,7 @@ export async function getCountryRelatedVariableData({
         if (!dailyData.has(date)) {
           const initialDay = { date };
 
-          for (const id of allVariableIds) {
+          for (const id of uniqueVariableIds) {
             initialDay[`${id}_values`] = [];
           }
 
@@ -493,7 +415,7 @@ export async function getCountryRelatedVariableData({
     .map((day) => {
       const observation = { date: day.date };
 
-      for (const variableId of allVariableIds) {
+      for (const variableId of uniqueVariableIds) {
         const values = day[`${variableId}_values`];
 
         observation[variableId] =
@@ -513,12 +435,7 @@ export async function getCountryRelatedVariableData({
     startDate,
     endDate,
     sampledLocations: selectedCountry.points,
-    referenceVariable: {
-      id: "T2M",
-      name: "Average Air Temperature",
-      unit: "°C",
-    },
-    variables: RELATED_VARIABLES,
+    variables: uniqueVariableIds.map(getVariableInfo),
     observations,
     observationCount: observations.length,
     source: "NASA POWER",
@@ -526,10 +443,45 @@ export async function getCountryRelatedVariableData({
   };
 }
 
-// Keep the original function available for existing Qatar code.
+// Backwards-compatible temperature retrieval.
+export async function getCountryTemperatureData({
+  country = "Qatar",
+  startYear = 1981,
+  endYear = 2024,
+} = {}) {
+  return getCountryEnvironmentalData({
+    country,
+    variableIds: ["T2M", "T2M_MAX", "T2M_MIN"],
+    startYear,
+    endYear,
+  });
+}
+
+// Backwards-compatible related-variable retrieval.
+export async function getCountryRelatedVariableData({
+  country = "Qatar",
+  startYear = 1981,
+  endYear = 2024,
+} = {}) {
+  const variableIds = ["T2M", ...RELATED_VARIABLES.map((item) => item.id)];
+
+  const data = await getCountryEnvironmentalData({
+    country,
+    variableIds,
+    startYear,
+    endYear,
+  });
+
+  return {
+    ...data,
+    referenceVariable: getVariableInfo("T2M"),
+    variables: RELATED_VARIABLES,
+  };
+}
+
 export async function getQatarTemperatureData({
   startYear = 1981,
-  endYear = new Date().getFullYear(),
+  endYear = 2024,
 } = {}) {
   return getCountryTemperatureData({
     country: "Qatar",

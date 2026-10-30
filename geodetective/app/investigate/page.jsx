@@ -1,4 +1,3 @@
-
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
@@ -11,69 +10,56 @@ const typeLabels = {
   explanation: "Environmental Explanation",
 };
 
-const scenarioLabels = {
-  // Relationship scenarios: homepage ID -> backend scenario ID
-  rainfall_temperature: {
-    title: "Rainfall and Temperature",
-    mainVariable: "T2M",
-    comparisonVariable: "PRECTOTCORR",
-    apiScenarioId: "temperature-precipitation",
+const variableInfo = {
+  T2M: {
+    name: "Average Air Temperature",
+    unit: "°C",
   },
-  humidity_temperature: {
-    title: "Humidity and Temperature",
-    mainVariable: "T2M",
-    comparisonVariable: "RH2M",
-    apiScenarioId: "temperature-humidity",
+  T2M_MAX: {
+    name: "Maximum Air Temperature",
+    unit: "°C",
   },
-  dewpoint_temperature: {
-    title: "Dew Point and Temperature",
-    mainVariable: "T2M",
-    comparisonVariable: "T2MDEW",
-    apiScenarioId: "temperature-dew-point",
+  T2M_MIN: {
+    name: "Minimum Air Temperature",
+    unit: "°C",
   },
-  wind_temperature: {
-    title: "Wind Speed and Temperature",
-    mainVariable: "T2M",
-    comparisonVariable: "WS10M",
-    apiScenarioId: "temperature-wind",
+  PRECTOTCORR: {
+    name: "Corrected Precipitation",
+    unit: "mm/day",
   },
-  solar_temperature: {
-    title: "Solar Radiation and Temperature",
-    mainVariable: "T2M",
-    comparisonVariable: "ALLSKY_SFC_SW_DWN",
-    apiScenarioId: null,
+  RH2M: {
+    name: "Relative Humidity",
+    unit: "%",
   },
-
-  // Explanation scenarios
-  rainfall_explanation: {
-    title: "Possible Factors Related to Rainfall",
-    mainVariable: "PRECTOTCORR",
-    apiScenarioId: "rainfall-change",
+  T2MDEW: {
+    name: "Dew Point Temperature",
+    unit: "°C",
   },
-  temperature_explanation: {
-    title: "Possible Factors Related to Temperature",
-    mainVariable: "T2M",
-    apiScenarioId: "heat-change",
+  ALLSKY_SFC_SW_DWN: {
+    name: "Solar Radiation",
+    unit: "kWh/m²/day",
   },
-  humidity_explanation: {
-    title: "Possible Factors Related to Humidity",
-    mainVariable: "RH2M",
-    apiScenarioId: "humidity-change",
+  WS10M: {
+    name: "Wind Speed at 10 Metres",
+    unit: "m/s",
+  },
+  QV2M: {
+    name: "Specific Humidity",
+    unit: "g/kg",
+  },
+  TS: {
+    name: "Earth Skin Temperature",
+    unit: "°C",
   },
 };
 
-const variableLabels = {
-  T2M: "Average Temperature",
-  T2M_MAX: "Maximum Temperature",
-  T2M_MIN: "Minimum Temperature",
-  PRECTOTCORR: "Corrected Precipitation",
-  RH2M: "Relative Humidity",
-  T2MDEW: "Dew Point Temperature",
-  ALLSKY_SFC_SW_DWN: "Solar Radiation",
-  WS10M: "Wind Speed at 10 Metres",
-  QV2M: "Specific Humidity",
-  TS: "Earth Skin Temperature",
-};
+function getVariableName(variable) {
+  return variableInfo[variable]?.name || variable || "Environmental variable";
+}
+
+function getVariableUnit(variable) {
+  return variableInfo[variable]?.unit || "";
+}
 
 function formatNumber(value, decimals = 3) {
   if (
@@ -101,13 +87,9 @@ function formatPValue(value) {
   return pValue < 0.001 ? "p < 0.001" : `p = ${pValue.toFixed(4)}`;
 }
 
-function getVariableName(variable) {
-  return variableLabels[variable] || variable || "Environmental variable";
-}
+/* ---------------- TREND ANALYSIS ---------------- */
 
-/* ---------------- TREND ANALYSIS COMPONENTS ---------------- */
-
-function TemperatureChart({ annualData, variable }) {
+function TemperatureChart({ annualData, variable, unit }) {
   if (!annualData || annualData.length < 2) {
     return (
       <div className="chart-empty">
@@ -116,26 +98,32 @@ function TemperatureChart({ annualData, variable }) {
     );
   }
 
-  const validData = annualData.filter((item) =>
-    Number.isFinite(Number(item.averageTemperature)),
-  );
+  const validData = annualData.filter((item) => {
+    const value = item.value ?? item.averageTemperature;
+
+    return (
+      value !== null && value !== undefined && Number.isFinite(Number(value))
+    );
+  });
 
   if (validData.length < 2) {
     return (
       <div className="chart-empty">
-        Temperature measurements are unavailable.
+        Measurements are unavailable for this variable.
       </div>
     );
   }
 
-  const values = validData.map((item) => Number(item.averageTemperature));
+  const getValue = (item) => Number(item.value ?? item.averageTemperature);
+
+  const values = validData.map(getValue);
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
   const range = maxValue - minValue || 1;
 
   const width = 800;
   const height = 260;
-  const left = 55;
+  const left = 65;
   const right = 20;
   const top = 20;
   const bottom = 35;
@@ -145,8 +133,7 @@ function TemperatureChart({ annualData, variable }) {
 
   const points = validData.map((item, index) => ({
     x: left + (index / Math.max(validData.length - 1, 1)) * plotWidth,
-    y:
-      top + ((maxValue - Number(item.averageTemperature)) / range) * plotHeight,
+    y: top + ((maxValue - getValue(item)) / range) * plotHeight,
     year: item.year,
   }));
 
@@ -163,7 +150,7 @@ function TemperatureChart({ annualData, variable }) {
           <span className="detail-label">ANNUAL MEASUREMENTS</span>
           <h4>{getVariableName(variable)}</h4>
         </div>
-        <span className="chart-unit">°C</span>
+        <span className="chart-unit">{unit}</span>
       </div>
 
       <div className="chart-container">
@@ -251,6 +238,7 @@ function TemperatureChart({ annualData, variable }) {
 function ResultCard({ result }) {
   const trend = result.trend;
   const variable = result.variable;
+  const unit = result.unit || getVariableUnit(variable);
   const isIncreasing = trend?.direction === "increasing";
   const isSignificant = trend?.significant;
 
@@ -258,7 +246,7 @@ function ResultCard({ result }) {
     <article className="result-card">
       <div className="result-card-header">
         <div>
-          <span className="detail-label">TEMPERATURE VARIABLE</span>
+          <span className="detail-label">SELECTED ENVIRONMENTAL VARIABLE</span>
           <h3>{getVariableName(variable)}</h3>
         </div>
 
@@ -267,7 +255,13 @@ function ResultCard({ result }) {
             isIncreasing ? "trend-increasing" : "trend-decreasing"
           }`}
         >
-          <span>{isIncreasing ? "↗" : "↘"}</span>
+          <span>
+            {trend?.direction === "increasing"
+              ? "↗"
+              : trend?.direction === "decreasing"
+                ? "↘"
+                : "→"}
+          </span>
           {trend?.direction || "Unknown"}
         </span>
       </div>
@@ -276,13 +270,13 @@ function ResultCard({ result }) {
         <div className="result-metric">
           <span className="metric-label">Annual change</span>
           <strong>{formatNumber(trend?.slopePerYear, 4)}</strong>
-          <span className="metric-unit">°C per year</span>
+          <span className="metric-unit">{unit} per year</span>
         </div>
 
         <div className="result-metric">
           <span className="metric-label">Total estimated change</span>
           <strong>{formatNumber(trend?.totalChange, 2)}</strong>
-          <span className="metric-unit">°C over the study period</span>
+          <span className="metric-unit">{unit} over the study period</span>
         </div>
 
         <div className="result-metric">
@@ -314,12 +308,16 @@ function ResultCard({ result }) {
         </div>
       </div>
 
-      <TemperatureChart annualData={result.annualData} variable={variable} />
+      <TemperatureChart
+        annualData={result.annualData}
+        variable={variable}
+        unit={unit}
+      />
     </article>
   );
 }
 
-/* ---------------- CORRELATION DISPLAY COMPONENTS ---------------- */
+/* ---------------- CORRELATION DISPLAY ---------------- */
 
 function CorrelationStrengthGuide() {
   const ranges = [
@@ -393,11 +391,11 @@ function ComparisonChart({ data, firstName, secondName }) {
       : Number(value);
   });
 
-  const hasValidValues = [...firstValues, ...secondValues].some(
+  const valid = [...firstValues, ...secondValues].filter(
     (value) => value !== null && Number.isFinite(value),
   );
 
-  if (!hasValidValues) {
+  if (valid.length === 0) {
     return (
       <div className="chart-empty">
         The comparison measurements are unavailable.
@@ -414,11 +412,6 @@ function ComparisonChart({ data, firstName, secondName }) {
 
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
-
-  const valid = [...firstValues, ...secondValues].filter(
-    (value) => value !== null && Number.isFinite(value),
-  );
-
   const maxAbsolute = Math.max(2, ...valid.map(Math.abs));
 
   const getX = (index) =>
@@ -570,8 +563,6 @@ function RelationshipResults({ result }) {
   const secondName =
     comparison.variableB?.name || getVariableName(comparison.variableB?.id);
 
-  const direction = comparison.direction || "Unavailable";
-
   return (
     <>
       <section className="analysis-overview">
@@ -600,7 +591,7 @@ function RelationshipResults({ result }) {
           </div>
 
           <div className="overview-stat">
-            <strong>{direction}</strong>
+            <strong>{comparison.direction || "Unavailable"}</strong>
             <span>Relationship direction</span>
           </div>
         </div>
@@ -611,7 +602,7 @@ function RelationshipResults({ result }) {
 
         <h3>
           {validCorrelation
-            ? `${comparison.strength || ""} ${direction.toLowerCase()} correlation`
+            ? `${comparison.strength || ""} ${(comparison.direction || "").toLowerCase()} correlation`
             : "Correlation could not be calculated"}
         </h3>
 
@@ -664,8 +655,7 @@ function ExplanationResults({ result }) {
   const explanationResults = result.results?.comparisons || [];
   const targetVariable = result.results?.targetVariable;
 
-  const mainName =
-    targetVariable?.name || getVariableName(targetVariable?.id);
+  const mainName = targetVariable?.name || getVariableName(targetVariable?.id);
 
   const selectedResult = explanationResults.find(
     (item) => item.variableB?.id === selected,
@@ -676,9 +666,7 @@ function ExplanationResults({ result }) {
       <section className="analysis-overview">
         <div className="analysis-overview-heading">
           <span className="detail-label">ENVIRONMENTAL EXPLANATION</span>
-
-          <h3>{result.title || `Understanding ${mainName.toLowerCase()}`}</h3>
-
+          <h3>{result.title || `Understanding ${mainName}`}</h3>
           <p>{result.explanation || result.description}</p>
         </div>
 
@@ -704,12 +692,10 @@ function ExplanationResults({ result }) {
 
       <div className="results-heading">
         <span className="detail-label">RELATED VARIABLES</span>
-
         <h3>
-          Which factors show the strongest relationships with{" "}
+          Which variables show the strongest relationships with{" "}
           {mainName.toLowerCase()}?
         </h3>
-
         <p>
           The variables are ranked by the absolute detrended correlation value,
           from strongest to weakest. Select a variable to view its comparison
@@ -831,9 +817,11 @@ function ExplanationResults({ result }) {
   );
 }
 
-/* ---------------- EXISTING TEMPERATURE CORRELATION EXPLORER ---------------- */
+/* ---------------- RELATED VARIABLE EXPLORER ---------------- */
 
-function CorrelationExplorer({ country, studyPeriod }) {
+/* ---------------- RELATED VARIABLE EXPLORER ---------------- */
+
+function CorrelationExplorer({ country, studyPeriod, variable }) {
   const [correlations, setCorrelations] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -846,11 +834,13 @@ function CorrelationExplorer({ country, studyPeriod }) {
     setSelectedVariable(null);
 
     try {
-      const response = await fetch("/api/nasa/correlations", {
+      const response = await fetch("/api/nasa/scenario", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          type: "explanation",
           country,
+          variable,
           startYear: studyPeriod?.startYear ?? 1981,
           endYear: studyPeriod?.endYear ?? 2024,
         }),
@@ -863,7 +853,7 @@ function CorrelationExplorer({ country, studyPeriod }) {
         data = JSON.parse(responseText);
       } catch {
         throw new Error(
-          `The correlations API returned a non-JSON response (HTTP ${response.status}). Check the API route and server terminal.`,
+          `The analysis API returned a non-JSON response (HTTP ${response.status}). Check the API route and server terminal.`,
         );
       }
 
@@ -880,114 +870,201 @@ function CorrelationExplorer({ country, studyPeriod }) {
     }
   }
 
-  const results = correlations?.results || [];
+  const results = correlations?.results?.comparisons || [];
+  const referenceName = getVariableName(variable);
 
   return (
-    <section style={{ marginTop: "48px" }}>
-      <div className="results-heading">
-        <span className="detail-label">DISCOVER RELATED VARIABLES</span>
-        <h3>What other factors are related to temperature?</h3>
-        <p>
-          Explore selected NASA environmental measurements and discover their
-          relationships with average temperature in {country}.
-        </p>
-      </div>
+    <section className="related-explorer">
+      {/* INTRODUCTION CARD */}
 
       {!correlations && !loading && !error && (
-        <div className="result-card">
-          <p>
-            We will compare temperature with selected NASA environmental
-            variables and rank their correlations from strongest to weakest.
-          </p>
-          <button type="button" onClick={findRelatedVariables}>
-            Find Related Variables
-          </button>
+        <div className="related-variables-section">
+          <div className="related-variables-content">
+            <div className="related-icon">
+              <span>✳</span>
+            </div>
+
+            <span className="related-eyebrow">GO BEYOND THE BASICS</span>
+
+            <h3>
+              What other factors are related to
+              <span> {referenceName.toLowerCase()}?</span>
+            </h3>
+
+            <p className="related-description">
+              Explore other NASA environmental measurements and discover how
+              they relate to {referenceName.toLowerCase()} in {country}.
+            </p>
+
+            <div className="related-info">
+              <div className="related-info-icon">↗</div>
+
+              <p>
+                We will compare {referenceName.toLowerCase()} with other
+                supported NASA environmental variables and rank their
+                correlations from strongest to weakest.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="related-variables-button"
+              onClick={findRelatedVariables}
+            >
+              <span>Find Related Variables</span>
+              <span className="related-button-arrow">→</span>
+            </button>
+
+            <span className="related-footnote">
+              Discover patterns. Explore connections. Uncover insights.
+            </span>
+          </div>
         </div>
       )}
+
+      {/* LOADING */}
 
       {loading && (
         <div className="dataset-message">
           <div className="loading-spinner"></div>
+
           <h3>Discovering related environmental variables</h3>
+
           <p>Retrieving NASA measurements and calculating correlations.</p>
         </div>
       )}
+
+      {/* ERROR */}
 
       {error && (
         <div className="dataset-message error-message">
           <h3>We couldn't calculate the correlations</h3>
           <p>{error}</p>
+
           <button type="button" onClick={findRelatedVariables}>
             Try again
           </button>
         </div>
       )}
 
+      {/* CORRELATION RESULTS */}
+
       {correlations && (
         <>
-          <p>
-            Reference variable: <strong>Average Temperature (T2M)</strong>.
-            Results are ranked by absolute detrended Pearson correlation.
-          </p>
+          <div className="results-heading">
+            <span className="detail-label">DISCOVERED RELATIONSHIPS</span>
 
-          <div style={{ display: "grid", gap: "10px" }}>
+            <h3>
+              Environmental factors related to {referenceName.toLowerCase()}
+            </h3>
+
+            <p>
+              Results are ranked by absolute detrended Pearson correlation, from
+              strongest to weakest.
+            </p>
+          </div>
+
+          <div className="related-reference">
+            <span className="related-reference-icon">◎</span>
+
+            <div>
+              <span className="detail-label">REFERENCE VARIABLE</span>
+              <strong>{referenceName}</strong>
+              <span>{country}</span>
+            </div>
+          </div>
+
+          <div className="related-results-list">
             {results.map((item, index) => {
+              const relatedVariable = item.variableB;
               const value = Number(item.correlation);
               const valid = Number.isFinite(value);
 
+              const isSelected =
+                selectedVariable?.variableB?.id === relatedVariable?.id;
+
               return (
                 <button
-                  key={item.code}
+                  key={relatedVariable?.id || index}
                   type="button"
                   disabled={!valid}
-                  onClick={() =>
-                    setSelectedVariable(
-                      selectedVariable?.code === item.code ? null : item,
-                    )
-                  }
-                  style={{
-                    width: "100%",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    gap: "15px",
-                    padding: "16px",
-                    border: "1px solid #e1e5e5",
-                    borderRadius: "10px",
-                    background:
-                      selectedVariable?.code === item.code ? "#f0f7f6" : "#fff",
-                    textAlign: "left",
-                    cursor: valid ? "pointer" : "default",
-                  }}
+                  onClick={() => setSelectedVariable(isSelected ? null : item)}
+                  className={`related-result-item ${
+                    isSelected ? "related-result-selected" : ""
+                  }`}
                 >
-                  <span>
+                  <span className="related-result-rank">
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
+
+                  <span className="related-result-info">
                     <strong>
-                      {index + 1}. {item.name}
+                      {relatedVariable?.name || "Unknown variable"}
                     </strong>
-                    <span
-                      style={{
-                        display: "block",
-                        fontSize: "12px",
-                        marginTop: "4px",
-                      }}
-                    >
-                      {item.code} · {item.strength} {item.direction}
+
+                    <span>
+                      {relatedVariable?.id} · {item.strength} {item.direction}
                     </span>
                   </span>
-                  <strong>{valid ? value.toFixed(3) : "N/A"}</strong>
+
+                  <span className="related-result-value">
+                    {valid ? value.toFixed(3) : "N/A"}
+                  </span>
+
+                  <span className="related-result-arrow">
+                    {isSelected ? "−" : "+"}
+                  </span>
                 </button>
               );
             })}
           </div>
 
+          {results.length === 0 && (
+            <div className="dataset-message">
+              <h3>No related variables were found</h3>
+              <p>The analysis did not return any correlation results.</p>
+            </div>
+          )}
+
+          {/* SELECTED VARIABLE DETAILS */}
+
           {selectedVariable && (
-            <section className="result-card" style={{ marginTop: "20px" }}>
-              <h3>Temperature and {selectedVariable.name}</h3>
-              <strong>{formatNumber(selectedVariable.correlation)}</strong>
+            <section className="result-card related-detail-card">
+              <span className="detail-label">SELECTED RELATIONSHIP</span>
+
+              <h3>
+                {referenceName} and {selectedVariable.variableB?.name}
+              </h3>
+
+              <div className="result-metrics">
+                <div className="result-metric">
+                  <span className="metric-label">Correlation</span>
+                  <strong>{formatNumber(selectedVariable.correlation)}</strong>
+                </div>
+
+                <div className="result-metric">
+                  <span className="metric-label">Strength</span>
+                  <strong>{selectedVariable.strength || "N/A"}</strong>
+                </div>
+
+                <div className="result-metric">
+                  <span className="metric-label">Direction</span>
+                  <strong>{selectedVariable.direction || "N/A"}</strong>
+                </div>
+              </div>
+
+              <p>{selectedVariable.interpretation}</p>
+
               <ComparisonChart
                 data={selectedVariable.comparisonData}
-                firstName="Average Temperature"
-                secondName={selectedVariable.name}
+                firstName={referenceName}
+                secondName={selectedVariable.variableB?.name}
               />
+
+              <p>
+                This relationship describes a statistical association. It does
+                not establish that one variable causes the other to change.
+              </p>
             </section>
           )}
 
@@ -995,10 +1072,10 @@ function CorrelationExplorer({ country, studyPeriod }) {
 
           <button
             type="button"
+            className="refresh-correlations-button"
             onClick={findRelatedVariables}
-            style={{ marginTop: "18px" }}
           >
-            Refresh correlations
+            ↻ Refresh correlations
           </button>
         </>
       )}
@@ -1012,31 +1089,39 @@ function InvestigationContent() {
   const searchParams = useSearchParams();
 
   const type = searchParams.get("type") || "";
-  const question = searchParams.get("question") || "";
-  const scenarioId = searchParams.get("scenarioId") || "";
+  const country = searchParams.get("country") || "";
+  const variable = searchParams.get("variable") || "";
+  const secondVariable = searchParams.get("secondVariable") || "";
+
+  const startYear = Number(searchParams.get("startYear"));
+  const endYear = Number(searchParams.get("endYear"));
 
   const typeLabel = typeLabels[type] || "Not specified";
-  const scenario = scenarioLabels[scenarioId];
 
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const isTrendQuestion =
-    type === "trend" &&
-    /(hot|temperatur|warm|heat|cool|cold|warming|cooling)/i.test(question);
+  const validYears =
+    Number.isInteger(startYear) &&
+    Number.isInteger(endYear) &&
+    startYear >= 1981 &&
+    endYear <= 2024 &&
+    endYear >= startYear &&
+    endYear - startYear + 1 >= 10;
 
-  const isRelationship =
-    type === "relationship" &&
-    !!scenario?.comparisonVariable &&
-    !!scenario?.apiScenarioId;
+  const validVariable = Boolean(variableInfo[variable]);
 
-  const isExplanation =
-    type === "explanation" &&
-    !!scenario?.mainVariable &&
-    !!scenario?.apiScenarioId;
+  const validSecondVariable =
+    type !== "relationship" ||
+    (Boolean(variableInfo[secondVariable]) && secondVariable !== variable);
 
-  const isSupported = isTrendQuestion || isRelationship || isExplanation;
+  const isSupported =
+    ["trend", "relationship", "explanation"].includes(type) &&
+    Boolean(country) &&
+    validVariable &&
+    validSecondVariable &&
+    validYears;
 
   useEffect(() => {
     if (!isSupported) {
@@ -1054,25 +1139,19 @@ function InvestigationContent() {
       setAnalysis(null);
 
       try {
-        let endpoint;
-        let body;
+        const endpoint =
+          type === "trend" ? "/api/nasa/analyze" : "/api/nasa/scenario";
 
-        if (isTrendQuestion) {
-          endpoint = "/api/nasa/analyze";
-          body = {
-            question,
-            startYear: 1981,
-            endYear: 2024,
-          };
-        } else {
-          endpoint = "/api/nasa/scenario";
-          body = {
-            type,
-            scenarioId: scenario.apiScenarioId,
-            question,
-            startYear: 1981,
-            endYear: 2024,
-          };
+        const body = {
+          type,
+          country,
+          variable,
+          startYear,
+          endYear,
+        };
+
+        if (type === "relationship") {
+          body.secondVariable = secondVariable;
         }
 
         const response = await fetch(endpoint, {
@@ -1117,22 +1196,25 @@ function InvestigationContent() {
     return () => controller.abort();
   }, [
     isSupported,
-    isTrendQuestion,
-    isRelationship,
-    isExplanation,
     type,
-    scenarioId,
-    question,
-    scenario?.apiScenarioId,
+    country,
+    variable,
+    secondVariable,
+    startYear,
+    endYear,
   ]);
 
-  const results = Array.isArray(analysis?.results)
-    ? analysis.results
-    : [];
+  const results = Array.isArray(analysis?.results) ? analysis.results : [];
+
+  const trendResult = results[0];
 
   const significantCount = results.filter(
     (item) => item.trend?.significant,
   ).length;
+
+  const isTrend = type === "trend";
+  const isRelationship = type === "relationship";
+  const isExplanation = type === "explanation";
 
   const allResultsIncreasing =
     results.length > 0 &&
@@ -1145,6 +1227,7 @@ function InvestigationContent() {
           <span className="logo-icon">◈</span>
           <span>Earth System Trend Detective</span>
         </a>
+
         <a href="/" className="back-home-link">
           ← Back to Home
         </a>
@@ -1152,8 +1235,10 @@ function InvestigationContent() {
 
       <section className="investigation-content">
         <header className="investigation-header">
-          <span className="investigation-badge">YOUR RESEARCH QUESTION</span>
+          <span className="investigation-badge">YOUR INVESTIGATION</span>
+
           <h1>Let's investigate.</h1>
+
           <p>
             Explore environmental measurements and discover what the scientific
             evidence tells us.
@@ -1169,9 +1254,33 @@ function InvestigationContent() {
           <div className="question-divider"></div>
 
           <div className="submitted-question-section">
-            <span className="detail-label">YOUR QUESTION</span>
+            <span className="detail-label">STUDY LOCATION</span>
             <p className="submitted-question-text">
-              {question || "No question was provided."}
+              {country || "Not selected"}
+            </p>
+          </div>
+
+          <div className="question-divider"></div>
+
+          <div className="submitted-question-section">
+            <span className="detail-label">
+              {isRelationship ? "SELECTED VARIABLES" : "ENVIRONMENTAL VARIABLE"}
+            </span>
+
+            <p className="submitted-question-text">
+              {getVariableName(variable)}
+              {isRelationship ? ` and ${getVariableName(secondVariable)}` : ""}
+            </p>
+          </div>
+
+          <div className="question-divider"></div>
+
+          <div className="submitted-question-section">
+            <span className="detail-label">STUDY PERIOD</span>
+            <p className="submitted-question-text">
+              {Number.isInteger(startYear) && Number.isInteger(endYear)
+                ? `${startYear}–${endYear}`
+                : "Not selected"}
             </p>
           </div>
         </section>
@@ -1182,24 +1291,26 @@ function InvestigationContent() {
             <h2>What do the measurements tell us?</h2>
             <p>
               The application retrieves NASA Earth science measurements and
-              analyzes trends or relationships according to your investigation
-              type.
+              analyzes trends or relationships according to your selected
+              variables.
             </p>
           </div>
 
           {loading && (
             <div className="dataset-message">
               <div className="loading-spinner"></div>
+
               <h3>
-                {isTrendQuestion
-                  ? "Analyzing NASA temperature measurements"
+                {isTrend
+                  ? `Analyzing ${getVariableName(variable).toLowerCase()}`
                   : isRelationship
                     ? "Comparing the selected NASA variables"
-                    : "Investigating possible environmental relationships"}
+                    : "Investigating related environmental variables"}
               </h3>
+
               <p>
-                Retrieving observations and performing the statistical analysis.
-                This may take a few moments.
+                Retrieving NASA observations and performing the statistical
+                analysis. This may take a few moments.
               </p>
             </div>
           )}
@@ -1213,29 +1324,31 @@ function InvestigationContent() {
 
           {!loading && !error && !isSupported && (
             <div className="dataset-message">
-              <h3>This investigation is not available yet</h3>
+              <h3>This investigation request is incomplete or invalid</h3>
               <p>
-                Please select one of the predefined test questions on the
-                homepage. The current version supports temperature trend
-                analysis, four variable comparisons, and three environmental
-                explanation scenarios.
+                Return to the homepage and select an investigation type,
+                country, supported variable, and a study period of at least 10
+                years between 1981 and 2024. Relationship analysis requires two
+                different variables.
               </p>
             </div>
           )}
 
-          {!loading && !error && analysis && isTrendQuestion && (
+          {!loading && !error && analysis && isTrend && trendResult && (
             <>
               <section className="analysis-overview">
                 <div className="analysis-overview-heading">
                   <span className="detail-label">OVERALL FINDING</span>
+
                   <h3>
                     {allResultsIncreasing
-                      ? "All analyzed temperature measures show an increasing trend."
-                      : "Temperature trends have been analyzed."}
+                      ? `${getVariableName(variable)} shows an increasing trend.`
+                      : `${getVariableName(variable)} trend analysis is complete.`}
                   </h3>
+
                   <p>
-                    The measurements from the sampled locations in{" "}
-                    {analysis.location} show the following results for{" "}
+                    Measurements from the sampled locations in{" "}
+                    {analysis.location} show the following result for{" "}
                     {analysis.studyPeriod?.startYear}–
                     {analysis.studyPeriod?.endYear}.
                   </p>
@@ -1248,12 +1361,12 @@ function InvestigationContent() {
                     </strong>
                     <span>Daily observations</span>
                   </div>
+
                   <div className="overview-stat">
-                    <strong>
-                      {analysis.variablesAnalyzed || results.length}
-                    </strong>
-                    <span>Temperature variables</span>
+                    <strong>{analysis.variablesAnalyzed || 1}</strong>
+                    <span>Variable analyzed</span>
                   </div>
+
                   <div className="overview-stat">
                     <strong>
                       {significantCount}/{results.length}
@@ -1265,9 +1378,9 @@ function InvestigationContent() {
 
               <div className="results-heading">
                 <span className="detail-label">DETAILED RESULTS</span>
-                <h3>Temperature trends</h3>
+                <h3>{getVariableName(variable)} trend</h3>
                 <p>
-                  Each result shows the direction of change, estimated rate of
+                  The result shows the direction of change, estimated rate of
                   change, and statistical significance.
                 </p>
               </div>
@@ -1279,19 +1392,22 @@ function InvestigationContent() {
               </div>
 
               <CorrelationExplorer
-                country={analysis.location}
+                country={country}
                 studyPeriod={analysis.studyPeriod}
+                variable={variable}
               />
 
               <section className="methodology-card">
                 <span className="detail-label">HOW WAS THIS CALCULATED?</span>
+
                 <h3>Understanding the analysis</h3>
 
                 <div className="methodology-item">
                   <h4>1. Data collection</h4>
                   <p>
-                    Daily temperature measurements were retrieved from NASA
-                    POWER for five sample locations in {analysis.location}:{" "}
+                    Daily {getVariableName(variable).toLowerCase()} measurements
+                    were retrieved from NASA POWER for five sample locations in{" "}
+                    {analysis.location}:{" "}
                     {analysis.sampledLocations
                       ?.map((point) => point.name)
                       .join(", ") || "five selected sample locations"}
@@ -1302,16 +1418,16 @@ function InvestigationContent() {
                 <div className="methodology-item">
                   <h4>2. Annual averages</h4>
                   <p>
-                    Daily measurements were combined into annual average
-                    temperatures for each variable.
+                    Daily measurements were combined into annual average values
+                    for the selected environmental variable.
                   </p>
                 </div>
 
                 <div className="methodology-item">
                   <h4>3. Linear regression</h4>
                   <p>
-                    A linear regression model estimated the direction and rate
-                    of temperature change over the study period.
+                    An ordinary least-squares linear regression model estimated
+                    the direction and rate of change over the study period.
                   </p>
                 </div>
 
@@ -1328,22 +1444,22 @@ function InvestigationContent() {
                 <span className="detail-label">
                   IMPORTANT SCIENTIFIC LIMITATIONS
                 </span>
+
                 <h3>How should we interpret these results?</h3>
+
                 <ul>
                   <li>
                     <strong>Spatial coverage:</strong> Results average
                     measurements from five selected sample locations. They are
                     not an area-weighted national average.
                   </li>
+
                   <li>
                     <strong>Statistical model:</strong> Ordinary linear
                     regression does not account for possible autocorrelation in
-                    annual temperatures.
+                    annual measurements.
                   </li>
-                  <li>
-                    <strong>Correlation and causation:</strong> A temperature
-                    trend alone does not identify its causes.
-                  </li>
+
                   <li>
                     <strong>Interpretation:</strong> Statistical significance
                     does not automatically mean a change is large or practically
@@ -1364,6 +1480,7 @@ function InvestigationContent() {
                   <strong>
                     Data source: {analysis.dataSource || "NASA POWER"}
                   </strong>
+
                   <p>
                     Study period: {analysis.studyPeriod?.startYear}–
                     {analysis.studyPeriod?.endYear}. Spatial method:{" "}
@@ -1380,42 +1497,17 @@ function InvestigationContent() {
             <>
               <ExplanationResults result={analysis} />
 
-              {analysis.trend && (
-                <section className="result-card">
-                  <span className="detail-label">MAIN VARIABLE TREND</span>
-                  <h3>
-                    {analysis.mainVariable?.name ||
-                      getVariableName(scenario.mainVariable)}
-                  </h3>
-                  <p>
-                    Trend direction:{" "}
-                    <strong>
-                      {analysis.trend.direction || "Not available"}
-                    </strong>
-                  </p>
-                  <p>
-                    Estimated annual change:{" "}
-                    <strong>
-                      {formatNumber(analysis.trend.slopePerYear, 4)}
-                    </strong>
-                  </p>
-                  <p>
-                    Statistical significance:{" "}
-                    <strong>{formatPValue(analysis.trend.pValue)}</strong>
-                  </p>
-                </section>
-              )}
-
               <div className="data-source-note">
                 <span>ⓘ</span>
                 <div>
                   <strong>
                     Data source: {analysis.dataSource || "NASA POWER"}
                   </strong>
+
                   <p>
                     Study period: {analysis.studyPeriod?.startYear}–
                     {analysis.studyPeriod?.endYear}. The correlations describe
-                    associations, not proven causes.
+                    statistical associations, not proven causes.
                   </p>
                 </div>
               </div>

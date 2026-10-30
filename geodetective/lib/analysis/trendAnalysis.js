@@ -2,11 +2,13 @@
 const SIGNIFICANCE_LEVEL = 0.05;
 
 function mean(values) {
+  if (!values.length) return null;
+
   return values.reduce((sum, value) => sum + value, 0) /
     values.length;
 }
 
-// Lanczos approximation for the log-gamma function
+// Lanczos approximation for the log-gamma function.
 function logGamma(z) {
   const coefficients = [
     676.5203681218851,
@@ -107,23 +109,25 @@ function incompleteBeta(x, a, b) {
     logGamma(a) -
     logGamma(b) +
     a * Math.log(x) +
-    b * Math.log(1 - x)
+    b * Math.log(1 - x),
   );
 
   if (x < (a + 1) / (a + b + 2)) {
-    return (
-      front * betaFraction(a, b, x) / a
-    );
+    return (front * betaFraction(a, b, x)) / a;
   }
 
   return (
     1 -
-    front * betaFraction(b, a, 1 - x) / b
+    (front * betaFraction(b, a, 1 - x)) / b
   );
 }
 
 function calculatePValue(tStatistic, degreesOfFreedom) {
   if (degreesOfFreedom <= 0) return null;
+
+  if (!Number.isFinite(tStatistic)) {
+    return 0;
+  }
 
   const x =
     degreesOfFreedom /
@@ -132,7 +136,7 @@ function calculatePValue(tStatistic, degreesOfFreedom) {
   return incompleteBeta(
     x,
     degreesOfFreedom / 2,
-    0.5
+    0.5,
   );
 }
 
@@ -140,18 +144,22 @@ function calculateAnnualAverages(observations, variableId) {
   const yearlyValues = new Map();
 
   for (const observation of observations) {
-    const value = Number(observation[variableId]);
+    const rawValue = observation[variableId];
 
     if (
-      observation[variableId] === null ||
-      observation[variableId] === undefined ||
-      !Number.isFinite(value) ||
-      value === -999
+      rawValue === null ||
+      rawValue === undefined
     ) {
       continue;
     }
 
-    const year = Number(observation.date.slice(0, 4));
+    const value = Number(rawValue);
+
+    if (!Number.isFinite(value) || value === -999) {
+      continue;
+    }
+
+    const year = Number(observation.date?.slice(0, 4));
 
     if (!Number.isInteger(year)) continue;
 
@@ -163,30 +171,34 @@ function calculateAnnualAverages(observations, variableId) {
   }
 
   return Array.from(yearlyValues.entries())
-    .map(([year, values]) => ({
-      year,
-      averageTemperature: mean(values),
-      observationCount: values.length,
-    }))
+    .map(([year, values]) => {
+      const annualAverage = mean(values);
+
+      return {
+        year,
+        value: annualAverage,
+        // Compatibility with the previous temperature chart.
+        averageTemperature: annualAverage,
+        observationCount: values.length,
+      };
+    })
     .sort((a, b) => a.year - b.year);
 }
 
 function calculateLinearRegression(data) {
   const n = data.length;
 
-  if (n < 3) {
+  if (n < 10) {
     throw new Error(
-      "At least three years of temperature data are required."
+      "At least 10 annual observations are required for trend analysis.",
     );
   }
 
   const years = data.map((item) => item.year);
-  const temperatures = data.map(
-    (item) => item.averageTemperature
-  );
+  const values = data.map((item) => item.value);
 
   const averageYear = mean(years);
-  const averageTemperature = mean(temperatures);
+  const averageValue = mean(values);
 
   let numerator = 0;
   let denominator = 0;
@@ -194,7 +206,7 @@ function calculateLinearRegression(data) {
   for (let i = 0; i < n; i++) {
     numerator +=
       (years[i] - averageYear) *
-      (temperatures[i] - averageTemperature);
+      (values[i] - averageValue);
 
     denominator +=
       (years[i] - averageYear) ** 2;
@@ -205,29 +217,33 @@ function calculateLinearRegression(data) {
   }
 
   const slope = numerator / denominator;
-  const intercept =
-    averageTemperature - slope * averageYear;
+  const intercept = averageValue - slope * averageYear;
 
-  const residualSum = temperatures.reduce(
-    (sum, temperature, index) => {
+  const residualSum = values.reduce(
+    (sum, value, index) => {
       const predicted = intercept + slope * years[index];
-      return sum + (temperature - predicted) ** 2;
+
+      return sum + (value - predicted) ** 2;
     },
-    0
+    0,
   );
 
   const standardError = Math.sqrt(
-    residualSum / (n - 2) / denominator
+    residualSum / (n - 2) / denominator,
   );
 
   const tStatistic =
     standardError === 0
-      ? slope === 0 ? 0 : Math.sign(slope) * Infinity
+      ? slope === 0
+        ? 0
+        : Math.sign(slope) * Infinity
       : slope / standardError;
 
   const pValue =
     standardError === 0
-      ? slope === 0 ? 1 : 0
+      ? slope === 0
+        ? 1
+        : 0
       : calculatePValue(tStatistic, n - 2);
 
   return {
@@ -248,24 +264,29 @@ function calculateLinearRegression(data) {
   };
 }
 
-export function analyzeTemperatureTrend(
+export function analyzeEnvironmentalTrend(
   observations,
-  variableId
+  variableId,
+  unit = "Not specified",
 ) {
   if (!Array.isArray(observations)) {
-    throw new Error("Invalid temperature observations.");
+    throw new Error("Invalid environmental observations.");
+  }
+
+  if (!variableId || typeof variableId !== "string") {
+    throw new Error("Please provide an environmental variable ID.");
   }
 
   const annualData = calculateAnnualAverages(
     observations,
-    variableId
+    variableId,
   );
 
   const trend = calculateLinearRegression(annualData);
 
   return {
     variable: variableId,
-    unit: "°C",
+    unit,
     annualData,
     trend: {
       direction: trend.direction,
@@ -281,6 +302,19 @@ export function analyzeTemperatureTrend(
   };
 }
 
+// Retained for any existing code that imports this function.
+export function analyzeTemperatureTrend(
+  observations,
+  variableId,
+) {
+  return analyzeEnvironmentalTrend(
+    observations,
+    variableId,
+    "°C",
+  );
+}
+
+// Retained for compatibility with the old temperature analysis.
 export function analyzeAllTemperatureTrends(observations) {
   const variables = ["T2M", "T2M_MAX", "T2M_MIN"];
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import "./page.css";
 
@@ -34,15 +34,8 @@ const investigationTypes = [
   },
 ];
 
-const countries = [
-  "Qatar",
-  "India",
-  "Bangladesh",
-  "United States",
-  "United Kingdom",
-];
-
-const variables = [
+// Variables currently connected to the existing analysis functions
+const supportedVariables = [
   { id: "T2M", label: "Air Temperature", unit: "°C" },
   { id: "T2M_MAX", label: "Maximum Air Temperature", unit: "°C" },
   { id: "T2M_MIN", label: "Minimum Air Temperature", unit: "°C" },
@@ -54,10 +47,105 @@ const variables = [
     label: "Solar Radiation",
     unit: "kWh/m²/day",
   },
-  { id: "WS10M", label: "Wind Speed", unit: "m/s" },
+  { id: "WS10M", label: "Wind Speed at 10 Metres", unit: "m/s" },
   { id: "QV2M", label: "Specific Humidity", unit: "g/kg" },
   { id: "TS", label: "Earth Skin Temperature", unit: "°C" },
 ];
+
+// Additional NASA POWER parameters.
+// These are available as dropdown choices but may require backend
+// data-retrieval and analysis support before they can be investigated.
+const additionalVariables = [
+  { id: "T2MWET", label: "Wet Bulb Temperature", unit: "°C" },
+  { id: "T2M_RANGE", label: "Daily Temperature Range", unit: "°C" },
+
+  { id: "WS50M", label: "Wind Speed at 50 Metres", unit: "m/s" },
+  { id: "WD10M", label: "Wind Direction at 10 Metres", unit: "degrees" },
+  { id: "WD50M", label: "Wind Direction at 50 Metres", unit: "degrees" },
+
+  { id: "PS", label: "Surface Pressure", unit: "kPa" },
+
+  {
+    id: "ALLSKY_SFC_SW_DNI",
+    label: "Direct Normal Solar Irradiance",
+    unit: "kWh/m²/day",
+  },
+  {
+    id: "ALLSKY_SFC_SW_DIFF",
+    label: "Diffuse Solar Radiation",
+    unit: "kWh/m²/day",
+  },
+  {
+    id: "ALLSKY_SFC_LW_DWN",
+    label: "Downward Longwave Radiation",
+    unit: "kWh/m²/day",
+  },
+  {
+    id: "CLRSKY_SFC_SW_DWN",
+    label: "Clear-Sky Solar Radiation",
+    unit: "kWh/m²/day",
+  },
+  {
+    id: "CLRSKY_SFC_SW_DNI",
+    label: "Clear-Sky Direct Solar Irradiance",
+    unit: "kWh/m²/day",
+  },
+  {
+    id: "CLRSKY_SFC_SW_DIFF",
+    label: "Clear-Sky Diffuse Solar Radiation",
+    unit: "kWh/m²/day",
+  },
+  {
+    id: "CLRSKY_SFC_LW_DWN",
+    label: "Clear-Sky Downward Longwave Radiation",
+    unit: "kWh/m²/day",
+  },
+
+  { id: "CLOUD_AMT", label: "Cloud Amount", unit: "%" },
+
+  {
+    id: "EVPTRNS",
+    label: "Evapotranspiration",
+    unit: "mm/day",
+  },
+  {
+    id: "GWETROOT",
+    label: "Root Zone Soil Wetness",
+    unit: "fraction",
+  },
+  {
+    id: "GWETPROF",
+    label: "Profile Soil Wetness",
+    unit: "fraction",
+  },
+  {
+    id: "GWETTOP",
+    label: "Surface Soil Wetness",
+    unit: "fraction",
+  },
+  {
+    id: "SNODP",
+    label: "Snow Depth",
+    unit: "cm",
+  },
+  {
+    id: "PRECSNO",
+    label: "Snowfall",
+    unit: "mm/day",
+  },
+  {
+    id: "CDD",
+    label: "Cooling Degree Days",
+    unit: "°C-day",
+  },
+  {
+    id: "HDD",
+    label: "Heating Degree Days",
+    unit: "°C-day",
+  },
+];
+
+const variables = [...supportedVariables, ...additionalVariables];
 
 const processSteps = [
   {
@@ -101,6 +189,10 @@ const yearOptions = Array.from(
 export default function HomePage() {
   const router = useRouter();
 
+  const [countries, setCountries] = useState([]);
+  const [countriesLoading, setCountriesLoading] = useState(true);
+  const [countriesError, setCountriesError] = useState("");
+
   const [selectedType, setSelectedType] = useState("");
   const [country, setCountry] = useState("Qatar");
   const [mainVariable, setMainVariable] = useState("T2M");
@@ -109,6 +201,60 @@ export default function HomePage() {
   const [endYear, setEndYear] = useState("2024");
   const [formError, setFormError] = useState("");
 
+  // Load the country entries from public/cities500.json
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadCountries() {
+      try {
+        const response = await fetch("/cities500.json");
+
+        if (!response.ok) {
+          throw new Error("Could not load the country list.");
+        }
+
+        const locations = await response.json();
+
+        const countryList = locations
+          .filter((location) => location.type === "country")
+          .sort((a, b) => a.name.localeCompare(b.name));
+
+        if (countryList.length === 0) {
+          throw new Error("No countries were found in cities500.json.");
+        }
+
+        if (isMounted) {
+          setCountries(countryList);
+
+          // Keep Qatar as the default when it exists in the JSON.
+          const qatarExists = countryList.some((item) => item.name === "Qatar");
+
+          if (!qatarExists) {
+            setCountry(countryList[0].name);
+          }
+        }
+      } catch (error) {
+        console.error("Country loading error:", error);
+
+        if (isMounted) {
+          setCountriesError(
+            "Unable to load countries. Please check that cities500.json exists in the public folder.",
+          );
+        }
+      } finally {
+        if (isMounted) {
+          setCountriesLoading(false);
+        }
+      }
+    }
+
+    loadCountries();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   const selectedInvestigation = investigationTypes.find(
     (item) => item.id === selectedType,
   );
@@ -116,6 +262,19 @@ export default function HomePage() {
   const handleTypeSelection = (typeId) => {
     setSelectedType(typeId);
     setFormError("");
+  };
+
+  const handleMainVariableChange = (newVariable) => {
+    setMainVariable(newVariable);
+
+    // Prevent the two relationship selections from becoming identical.
+    if (newVariable === secondVariable) {
+      const alternative = variables.find((item) => item.id !== newVariable);
+
+      if (alternative) {
+        setSecondVariable(alternative.id);
+      }
+    }
   };
 
   const startInvestigation = (event) => {
@@ -127,7 +286,7 @@ export default function HomePage() {
       return;
     }
 
-    if (!country || !mainVariable) {
+    if (countries.length === 0 || !country || !mainVariable) {
       setFormError("Please select a location and environmental variable.");
       return;
     }
@@ -190,22 +349,21 @@ export default function HomePage() {
       {/* NAVIGATION */}
 
       <nav className="navbar">
-        <div className="navbar-inner">
-          <a href="/" className="navbar-logo">
-            <span className="logo-icon">◈</span>
-
-            <span className="navbar-brand">
-              <span className="brand-name">Earth System</span>
-              <span className="brand-subtitle">TREND DETECTIVE</span>
-            </span>
+        <div className="navbar-content">
+          <a href="/" className="brand">
+            <svg
+  className="brand-icon"
+  viewBox="0 0 24 24"
+  fill="none"
+  stroke="currentColor"
+  strokeWidth="2"
+  strokeLinecap="round"
+>
+  <circle cx="10.8" cy="10.8" r="6.8" />
+  <path d="m16 16 5 5" />
+</svg>
+            <span>GEO DETECTIVE</span>
           </a>
-
-          <div className="navbar-right">
-            <span className="nasa-label">
-              <span className="status-dot" />
-              POWERED BY NASA EARTH SCIENCE DATA
-            </span>
-          </div>
         </div>
       </nav>
 
@@ -232,20 +390,27 @@ export default function HomePage() {
           </p>
 
           <div className="hero-highlights">
-            <span>
-              <span className="highlight-icon">◈</span>
-              NASA Earth Science Data
-            </span>
+            <a
+              href="https://earthdata.nasa.gov/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hero-highlight-link"
+            >
+              ◈ NASA Earth Science Data ↗
+            </a>
 
-            <span>
-              <span className="highlight-icon">↗</span>
-              Statistical Analysis
-            </span>
+            <a
+              href="https://www.nasa.gov/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hero-highlight-link"
+            >
+              Statistical Analysis ◎
+            </a>
 
-            <span>
-              <span className="highlight-icon">◎</span>
-              Interactive Insights
-            </span>
+            <a href="https://giovanni.gsfc.nasa.gov/giovanni/" className="hero-highlight-link">
+              NASA Giovanni
+            </a>
           </div>
         </div>
       </section>
@@ -339,23 +504,31 @@ export default function HomePage() {
               {/* LOCATION */}
 
               <div className="form-field">
-                <label htmlFor="country">Select location</label>
+                <label htmlFor="country">Select country</label>
 
                 <select
                   id="country"
                   value={country}
                   onChange={(event) => setCountry(event.target.value)}
+                  disabled={countriesLoading || countries.length === 0}
                 >
-                  {countries.map((item) => (
-                    <option key={item} value={item}>
-                      {item}
-                    </option>
-                  ))}
+                  {countriesLoading && (
+                    <option value="">Loading countries...</option>
+                  )}
+
+                  {!countriesLoading &&
+                    countries.map((item) => (
+                      <option key={item.countryCode} value={item.name}>
+                        {item.name}
+                      </option>
+                    ))}
                 </select>
 
                 <span className="input-hint">
-                  Choose the country whose environmental measurements you want
-                  to investigate.
+                  {countriesLoading
+                    ? "Loading country list..."
+                    : countriesError ||
+                      `Choose from ${countries.length} countries in the location dataset.`}
                 </span>
               </div>
 
@@ -371,13 +544,25 @@ export default function HomePage() {
                 <select
                   id="main-variable"
                   value={mainVariable}
-                  onChange={(event) => setMainVariable(event.target.value)}
+                  onChange={(event) =>
+                    handleMainVariableChange(event.target.value)
+                  }
                 >
-                  {variables.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.label} ({item.unit})
-                    </option>
-                  ))}
+                  <optgroup label="Currently supported variables">
+                    {supportedVariables.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label} ({item.unit})
+                      </option>
+                    ))}
+                  </optgroup>
+
+                  <optgroup label="Additional NASA POWER variables">
+                    {additionalVariables.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label} ({item.unit})
+                      </option>
+                    ))}
+                  </optgroup>
                 </select>
               </div>
 
@@ -394,15 +579,29 @@ export default function HomePage() {
                     value={secondVariable}
                     onChange={(event) => setSecondVariable(event.target.value)}
                   >
-                    {variables.map((item) => (
-                      <option
-                        key={item.id}
-                        value={item.id}
-                        disabled={item.id === mainVariable}
-                      >
-                        {item.label} ({item.unit})
-                      </option>
-                    ))}
+                    <optgroup label="Currently supported variables">
+                      {supportedVariables.map((item) => (
+                        <option
+                          key={item.id}
+                          value={item.id}
+                          disabled={item.id === mainVariable}
+                        >
+                          {item.label} ({item.unit})
+                        </option>
+                      ))}
+                    </optgroup>
+
+                    <optgroup label="Additional NASA POWER variables">
+                      {additionalVariables.map((item) => (
+                        <option
+                          key={item.id}
+                          value={item.id}
+                          disabled={item.id === mainVariable}
+                        >
+                          {item.label} ({item.unit})
+                        </option>
+                      ))}
+                    </optgroup>
                   </select>
 
                   <span className="input-hint">
@@ -478,7 +677,11 @@ export default function HomePage() {
                   retrieved and analyzed.
                 </span>
 
-                <button type="submit" className="start-button">
+                <button
+                  type="submit"
+                  className="start-button"
+                  disabled={countriesLoading || countries.length === 0}
+                >
                   Start Investigation
                   <span>→</span>
                 </button>

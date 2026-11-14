@@ -1,69 +1,115 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+
+import Link from "next/link";
+import "./page.css";
 
 export default function Home() {
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
+    <main className="home">
+      <nav className="navbar">
+        <Link href="/" className="logo">
+          <span className="logo-icon">✦</span>
+          geoDetective
+        </Link>
+
+        <div className="nav-links">
+          <Link href="/">Home</Link>
+          <Link href="#about">About</Link>
+          <Link href="#how-it-works">How It Works</Link>
+        </div>
+
+        <Link href="/investigate" className="nav-button">
+          Start Exploring →
+        </Link>
+      </nav>
+
+      <section className="hero">
+        <div className="hero-content">
+          <span className="tag">
+            ✦ NASA SPACE APPS CHALLENGE
+          </span>
+
           <h1>
-            To get started, edit the{" "}
-            <code className={styles.code}>page.js</code> file.
+            The Earth is full of
+            <span> mysteries.</span>
+            <br />
+            Let's investigate.
           </h1>
+
           <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
+            Explore our planet through satellite imagery,
+            discover hidden patterns, and investigate
+            environmental changes using the power of
+            Earth observation data.
           </p>
+
+          <div className="hero-buttons">
+            <Link href="/investigate" className="primary-button">
+              Start Investigating →
+            </Link>
+
+            <Link href="#about" className="secondary-button">
+              Discover More
+            </Link>
+          </div>
+
+          <div className="hero-caption">
+            <span>✦</span> Powered by Earth observation data
+          </div>
         </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        <div className="hero-visual">
+          <div className="earth-glow"></div>
+          <div className="earth">
+            <div className="earth-label">
+              <span className="live-dot"></span>
+              EARTH OBSERVATION
+            </div>
+          </div>
+          <div className="orbit orbit-one"></div>
+          <div className="orbit orbit-two"></div>
+          <div className="floating-card">
+            <span>🌍</span>
+            <div>
+              <strong>Our Planet</strong>
+              <small>One world. Endless discoveries.</small>
+            </div>
+          </div>
         </div>
-      </main>
-    </div>
+      </section>
+
+      <section className="about" id="about">
+        <span className="section-tag">EXPLORE • ANALYZE • DISCOVER</span>
+        <h2>Become an Earth Detective.</h2>
+        <p>
+          Use satellite observations to uncover clues,
+          understand environmental changes, and see
+          our planet from a completely different perspective.
+        </p>
+      </section>
+
+      <section className="features" id="how-it-works">
+        <div className="feature-card">
+          <span>🛰️</span>
+          <h3>Explore Satellite Data</h3>
+          <p>Discover our planet through Earth observation imagery.</p>
+        </div>
+
+        <div className="feature-card">
+          <span>🔎</span>
+          <h3>Investigate Clues</h3>
+          <p>Examine locations and identify interesting environmental patterns.</p>
+        </div>
+
+        <div className="feature-card">
+          <span>🌎</span>
+          <h3>Uncover Discoveries</h3>
+          <p>Turn observations into meaningful insights about Earth.</p>
+        </div>
+      </section>
+
+      <footer>
+        <p>geoDetective © 2026 | NASA Space Apps Challenge</p>
+      </footer>
+    </main>
   );
 }

@@ -1,1043 +1,719 @@
 
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
-import dynamic from "next/dynamic";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import "./page.css";
 
-const SatelliteMap = dynamic(
-  () => import("./SatelliteMap"),
-  {
-    ssr: false,
-    loading: () => (
-      <div
-        style={{
-          height: "290px",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          color: "#69d5ff",
-        }}
-      >
-        Loading satellite map...
-      </div>
-    ),
-  }
-);
+const typeLabels = {
+  trend: "Trend Analysis",
+  relationship: "Relationship Analysis",
+  explanation: "Environmental Explanation",
+};
 
-const DEFAULT_START_DATE = "2026-09-01";
-const DEFAULT_END_DATE = "2026-10-31";
-
-const NDVI_COLUMN =
-  "MOD13Q1_061__250m_16_days_NDVI";
-
-const QUALITY_COLUMN =
-  "MOD13Q1_061__250m_16_days_VI_Quality_MODLAND_Description";
-
-const USEFULNESS_COLUMN =
-  "MOD13Q1_061__250m_16_days_VI_Quality_VI_Usefulness_Description";
-
-// Parse CSV while supporting quoted values and commas.
-function parseCSV(csvText) {
-  const lines = csvText.trim().split(/\r?\n/);
-
-  if (lines.length < 2) {
-    throw new Error("The NASA CSV file contains no observations.");
-  }
-
-  const parseRow = (line) => {
-    const values = [];
-    let current = "";
-    let insideQuotes = false;
-
-    for (let i = 0; i < line.length; i++) {
-      const character = line[i];
-
-      if (character === '"') {
-        if (insideQuotes && line[i + 1] === '"') {
-          current += '"';
-          i++;
-        } else {
-          insideQuotes = !insideQuotes;
-        }
-      } else if (character === "," && !insideQuotes) {
-        values.push(current);
-        current = "";
-      } else {
-        current += character;
-      }
-    }
-
-    values.push(current);
-    return values;
-  };
-
-  const headers = parseRow(lines[0]);
-
-  return lines.slice(1).filter(Boolean).map((line) => {
-    const values = parseRow(line);
-    const row = {};
-
-    headers.forEach((header, index) => {
-      row[header] = values[index] ?? "";
-    });
-
-    return row;
-  });
-}
-
-function calculateNDVI(csvText) {
-  const rows = parseCSV(csvText);
-
-  const observations = rows
-    .map((row) => ({
-      date: row.Date,
-      ndvi: Number(row[NDVI_COLUMN]),
-      quality: row[QUALITY_COLUMN] || "Not provided",
-      usefulness: row[USEFULNESS_COLUMN] || "Not provided",
-    }))
-    .filter(
-      (item) =>
-        item.date &&
-        Number.isFinite(item.ndvi) &&
-        item.ndvi >= -1 &&
-        item.ndvi <= 1
-    )
-    .sort((a, b) => new Date(a.date) - new Date(b.date));
-
-  if (observations.length === 0) {
-    throw new Error("No valid NDVI measurements were found in the NASA results.");
-  }
-
-  const values = observations.map((item) => item.ndvi);
-
-  const average =
-    values.reduce((total, value) => total + value, 0) /
-    values.length;
-
-  const highest = observations.reduce((a, b) =>
-    a.ndvi > b.ndvi ? a : b
-  );
-
-  const lowest = observations.reduce((a, b) =>
-    a.ndvi < b.ndvi ? a : b
-  );
-
-  const first = observations[0];
-  const last = observations[observations.length - 1];
-
-  return {
-    observations,
-    average,
-    highest,
-    lowest,
-    first,
-    last,
-    change: last.ndvi - first.ndvi,
-  };
-}
-
-function formatDate(date) {
-  return new Date(`${date}T00:00:00`).toLocaleDateString(
-    "en-GB",
-    {
-      day: "numeric",
-      month: "short",
-      year: "numeric",
-    }
-  );
-}
-
-function getInterpretation(results) {
-  const change = results.change;
-  const absoluteChange = Math.abs(change);
-
-  if (absoluteChange < 0.01) {
-    return {
-      title: "Relatively stable NDVI",
-      description:
-        "The NDVI measurements show only a small difference between the first and last observations. This suggests relatively stable vegetation-index values at the sampled point during this period.",
-    };
-  }
-
-  if (change < 0) {
-    return {
-      title: "NDVI decreased",
-      description:
-        "The final observation has a lower NDVI value than the first observation. This indicates a decrease in the vegetation index at the sampled point. It does not, by itself, establish deforestation or identify the cause of the change.",
-    };
-  }
-
-  return {
-    title: "NDVI increased",
+const variableLabels = {
+  T2M: {
+    name: "Average Temperature",
     description:
-      "The final observation has a higher NDVI value than the first observation. This indicates an increase in the vegetation index at the sampled point. It does not, by itself, establish the cause of the change.",
-  };
+      "The average air temperature measured across the sampled locations.",
+  },
+  T2M_MAX: {
+    name: "Maximum Temperature",
+    description:
+      "The average of daily maximum air temperatures across the sampled locations.",
+  },
+  T2M_MIN: {
+    name: "Minimum Temperature",
+    description:
+      "The average of daily minimum air temperatures across the sampled locations.",
+  },
+};
+
+function formatNumber(value, decimals = 3) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+    return "Not available";
+  }
+
+  return Number(value).toFixed(decimals);
 }
 
-export default function Investigate() {
-  const [category, setCategory] = useState("Land Changes");
-  const [message, setMessage] = useState("");
+function formatPValue(value) {
+  if (value === null || value === undefined || !Number.isFinite(Number(value))) {
+    return "Not available";
+  }
 
-  const [allLocations, setAllLocations] = useState([]);
-  const [locationResults, setLocationResults] = useState([]);
-  const [locationInput, setLocationInput] = useState("");
-  const [selectedLocation, setSelectedLocation] = useState(null);
-  const [showLocations, setShowLocations] = useState(false);
-  const [loadingLocations, setLoadingLocations] = useState(true);
+  const pValue = Number(value);
 
-  const [startDate, setStartDate] = useState(DEFAULT_START_DATE);
-  const [endDate, setEndDate] = useState(DEFAULT_END_DATE);
+  if (pValue < 0.001) {
+    return "p < 0.001";
+  }
 
-  const [isInvestigating, setIsInvestigating] = useState(false);
-  const [investigationResults, setInvestigationResults] = useState(null);
+  return `p = ${pValue.toFixed(4)}`;
+}
 
-  // Load locations
-  useEffect(() => {
-    const loadLocations = async () => {
-      try {
-        const response = await fetch("/cities500.json");
+function getVariableName(variable) {
+  return variableLabels[variable]?.name || variable;
+}
 
-        if (!response.ok) {
-          throw new Error("Failed to load locations");
-        }
+function TemperatureChart({ annualData, variable }) {
+  if (!annualData || annualData.length < 2) {
+    return (
+      <div className="chart-empty">
+        Not enough annual measurements to display a chart.
+      </div>
+    );
+  }
 
-        const data = await response.json();
-        setAllLocations(data);
-      } catch (error) {
-        console.error("Error loading locations:", error);
-        setMessage("Unable to load locations.");
-      } finally {
-        setLoadingLocations(false);
-      }
-    };
+  const values = annualData
+    .map((item) => Number(item.averageTemperature))
+    .filter(Number.isFinite);
 
-    loadLocations();
-  }, []);
+  if (values.length < 2) {
+    return (
+      <div className="chart-empty">
+        Temperature measurements are unavailable.
+      </div>
+    );
+  }
 
-  // Search locations
-  useEffect(() => {
-    if (locationInput.trim().length < 2) {
-      setLocationResults([]);
-      return;
-    }
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const range = maxValue - minValue || 1;
 
-    const search = locationInput.toLowerCase().trim();
+  const chartWidth = 800;
+  const chartHeight = 260;
+  const paddingLeft = 55;
+  const paddingRight = 20;
+  const paddingTop = 20;
+  const paddingBottom = 35;
 
-    const results = allLocations
-      .filter((item) => {
-        return (
-          item.name?.toLowerCase().includes(search) ||
-          item.admin1?.toLowerCase().includes(search) ||
-          item.admin2?.toLowerCase().includes(search) ||
-          item.country?.toLowerCase().includes(search)
-        );
-      })
-      .slice(0, 10);
+  const plotWidth = chartWidth - paddingLeft - paddingRight;
+  const plotHeight = chartHeight - paddingTop - paddingBottom;
 
-    setLocationResults(results);
-  }, [locationInput, allLocations]);
+  const points = annualData
+    .filter((item) =>
+      Number.isFinite(Number(item.averageTemperature))
+    )
+    .map((item, index, array) => {
+      const x =
+        paddingLeft +
+        (index / Math.max(array.length - 1, 1)) * plotWidth;
 
-  // Select location
-  const handleLocationSelect = (item) => {
-    const label = [
-      item.name,
-      item.admin1,
-      item.country,
-    ]
-      .filter(Boolean)
-      .join(", ");
+      const y =
+        paddingTop +
+        ((maxValue - Number(item.averageTemperature)) / range) *
+          plotHeight;
 
-    setSelectedLocation({
-      label,
-      coordinates: [
-        Number(item.lon),
-        Number(item.lat),
-      ],
+      return {
+        x,
+        y,
+        year: item.year,
+        temperature: Number(item.averageTemperature),
+      };
     });
 
-    setLocationInput(label);
-    setShowLocations(false);
-    setMessage("");
-    setInvestigationResults(null);
-  };
+  const linePoints = points
+    .map((point) => `${point.x},${point.y}`)
+    .join(" ");
 
-  // Wait between NASA task status checks
-  const wait = (milliseconds) =>
-    new Promise((resolve) => setTimeout(resolve, milliseconds));
+  const firstYear = annualData[0]?.year;
+  const lastYear = annualData[annualData.length - 1]?.year;
 
-  // Start actual NASA investigation
-  const handleInvestigation = async (e) => {
-    e.preventDefault();
-
-    if (!selectedLocation) {
-      setMessage("Please select a location from the dropdown.");
-      return;
-    }
-
-    if (category !== "Land Changes" && category !== "Deforestation") {
-      setMessage(
-        "The NASA NDVI analysis is currently available for Land Changes and Deforestation investigations only."
-      );
-      return;
-    }
-
-    if (new Date(startDate) > new Date(endDate)) {
-      setMessage("The start date must be before the end date.");
-      return;
-    }
-
-    if (new Date(endDate) > new Date()) {
-      setMessage("Please select an end date that is not in the future.");
-      return;
-    }
-
-    setIsInvestigating(true);
-    setInvestigationResults(null);
-    setMessage("Connecting to NASA AppEEARS...");
-
-    try {
-      const [longitude, latitude] = selectedLocation.coordinates;
-
-      // 1. Submit the NDVI task to NASA
-      const submitResponse = await fetch("/api/nasa/ndvi", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          latitude,
-          longitude,
-          startDate,
-          endDate,
-        }),
-      });
-
-      const submitData = await submitResponse.json();
-
-      if (!submitResponse.ok || submitData.success === false) {
-        throw new Error(
-          submitData.message || submitData.error || "NASA task submission failed."
-        );
-      }
-
-      const taskId =
-        submitData.taskId ||
-        submitData.task_id ||
-        submitData.task?.task_id;
-
-      if (!taskId) {
-        throw new Error("NASA did not return a task ID.");
-      }
-
-      setMessage("NASA task submitted. Waiting for satellite data...");
-
-      // 2. Check the task status until NASA finishes processing
-      let completed = false;
-      let statusData = null;
-
-      for (let attempt = 0; attempt < 120; attempt++) {
-        await wait(5000);
-
-        const statusResponse = await fetch(
-          `/api/nasa/ndvi/status?taskId=${encodeURIComponent(taskId)}`
-        );
-
-        statusData = await statusResponse.json();
-
-        if (!statusResponse.ok) {
-          throw new Error(
-            statusData.message || statusData.error || "Unable to check NASA task status."
-          );
-        }
-
-        if (statusData.status === "done") {
-          completed = true;
-          break;
-        }
-
-        if (
-          statusData.status === "error" ||
-          statusData.status === "failed" ||
-          statusData.crashed === true
-        ) {
-          throw new Error(
-            statusData.error || "NASA could not complete the analysis."
-          );
-        }
-
-        setMessage(
-          `NASA is processing your satellite data... (${attempt + 1}/120)`
-        );
-      }
-
-      if (!completed) {
-        throw new Error(
-          "NASA is still processing this task. Please try again later."
-        );
-      }
-
-      setMessage("NASA processing completed. Downloading measurements...");
-
-      // 3. Download the CSV results
-      const downloadResponse = await fetch(
-        `/api/nasa/ndvi/download?taskId=${encodeURIComponent(taskId)}`
-      );
-
-      const downloadData = await downloadResponse.json();
-
-      if (!downloadResponse.ok || !downloadData.success) {
-        throw new Error(
-          downloadData.message ||
-          downloadData.error ||
-          "Unable to download NASA results."
-        );
-      }
-
-      if (!downloadData.csvContent) {
-        throw new Error("The downloaded NASA CSV file is empty.");
-      }
-
-      // 4. Extract and calculate the actual NDVI measurements
-      const analysis = calculateNDVI(downloadData.csvContent);
-
-      setInvestigationResults({
-        ...analysis,
-        taskId,
-        fileName: downloadData.fileName,
-        location: selectedLocation.label,
-        coordinates: {
-          latitude,
-          longitude,
-        },
-        category,
-        startDate,
-        endDate,
-      });
-
-      setMessage("NASA investigation completed successfully!");
-    } catch (error) {
-      console.error("Investigation error:", error);
-      setMessage(error.message || "Something went wrong during the investigation.");
-    } finally {
-      setIsInvestigating(false);
-    }
-  };
-
-  const interpretation = investigationResults
-    ? getInterpretation(investigationResults)
-    : null;
+  const middleYear = Math.round(
+    (Number(firstYear) + Number(lastYear)) / 2
+  );
 
   return (
-    <main className="investigate-page">
-
-      {/* Navbar */}
-      <nav className="navbar">
-        <Link href="/" className="logo">
-          <span className="logo-icon">✦</span>
-          geoDetective
-        </Link>
-
-        <div className="nav-links">
-          <Link href="/">Home</Link>
-          <Link href="/#about">About</Link>
-          <Link href="/#how-it-works">How It Works</Link>
+    <div className="temperature-chart">
+      <div className="chart-heading">
+        <div>
+          <span className="detail-label">ANNUAL MEASUREMENTS</span>
+          <h4>{getVariableName(variable)}</h4>
         </div>
 
-        <Link href="/" className="nav-button">
-          ← Back Home
-        </Link>
-      </nav>
+        <span className="chart-unit">°C</span>
+      </div>
 
-      {/* Header */}
-      <section className="investigate-header">
-        <span className="section-tag">
-          YOUR NEXT DISCOVERY STARTS HERE
+      <div className="chart-container">
+        <svg
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+          role="img"
+          aria-label={`${getVariableName(
+            variable
+          )} from ${firstYear} to ${lastYear}`}
+          preserveAspectRatio="none"
+        >
+          {[0, 1, 2, 3].map((index) => {
+            const y =
+              paddingTop + (index / 3) * plotHeight;
+
+            const value =
+              maxValue - (index / 3) * range;
+
+            return (
+              <g key={index}>
+                <line
+                  x1={paddingLeft}
+                  y1={y}
+                  x2={chartWidth - paddingRight}
+                  y2={y}
+                  className="chart-grid-line"
+                />
+
+                <text
+                  x={paddingLeft - 10}
+                  y={y + 4}
+                  textAnchor="end"
+                  className="chart-axis-label"
+                >
+                  {value.toFixed(1)}
+                </text>
+              </g>
+            );
+          })}
+
+          <polyline
+            points={linePoints}
+            fill="none"
+            className="chart-line"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+
+          {points.map((point, index) => (
+            index === 0 ||
+            index === points.length - 1 ||
+            index % 5 === 0 ? (
+              <circle
+                key={`${point.year}-${index}`}
+                cx={point.x}
+                cy={point.y}
+                r="3"
+                className="chart-point"
+              />
+            ) : null
+          ))}
+
+          <text
+            x={paddingLeft}
+            y={chartHeight - 8}
+            className="chart-axis-label"
+          >
+            {firstYear}
+          </text>
+
+          <text
+            x={paddingLeft + plotWidth / 2}
+            y={chartHeight - 8}
+            textAnchor="middle"
+            className="chart-axis-label"
+          >
+            {middleYear}
+          </text>
+
+          <text
+            x={chartWidth - paddingRight}
+            y={chartHeight - 8}
+            textAnchor="end"
+            className="chart-axis-label"
+          >
+            {lastYear}
+          </text>
+        </svg>
+      </div>
+
+      <p className="chart-caption">
+        Annual average temperature measurements from {firstYear} to{" "}
+        {lastYear}. Each point represents one year's average.
+      </p>
+    </div>
+  );
+}
+
+function ResultCard({ result }) {
+  const trend = result.trend;
+  const variable = result.variable;
+
+  const isIncreasing = trend?.direction === "increasing";
+  const isSignificant = trend?.significant;
+
+  return (
+    <article className="result-card">
+      <div className="result-card-header">
+        <div>
+          <span className="detail-label">
+            TEMPERATURE VARIABLE
+          </span>
+
+          <h3>{getVariableName(variable)}</h3>
+
+          <p className="result-variable-description">
+            {variableLabels[variable]?.description || ""}
+          </p>
+        </div>
+
+        <span
+          className={`trend-status ${
+            isIncreasing ? "trend-increasing" : "trend-decreasing"
+          }`}
+        >
+          <span>{isIncreasing ? "↗" : "↘"}</span>
+          {trend?.direction || "Unknown"}
+        </span>
+      </div>
+
+      <div className="result-metrics">
+        <div className="result-metric">
+          <span className="metric-label">Annual change</span>
+
+          <strong>
+            {formatNumber(trend?.slopePerYear, 4)}
+          </strong>
+
+          <span className="metric-unit">°C per year</span>
+        </div>
+
+        <div className="result-metric">
+          <span className="metric-label">Total estimated change</span>
+
+          <strong>
+            {formatNumber(trend?.totalChange, 2)}
+          </strong>
+
+          <span className="metric-unit">°C over the study period</span>
+        </div>
+
+        <div className="result-metric">
+          <span className="metric-label">Statistical significance</span>
+
+          <strong className={isSignificant ? "significant-value" : ""}>
+            {formatPValue(trend?.pValue)}
+          </strong>
+
+          <span className="metric-unit">
+            {isSignificant
+              ? "Statistically significant"
+              : "Not statistically significant"}
+          </span>
+        </div>
+      </div>
+
+      <div className="significance-explanation">
+        <span className="significance-icon">
+          {isSignificant ? "✓" : "ⓘ"}
         </span>
 
-        <h1>
-          Start an <span>Investigation.</span>
-        </h1>
+        <div>
+          <strong>
+            {isSignificant
+              ? "Evidence of a statistically significant trend"
+              : "The trend is not statistically significant"}
+          </strong>
 
-        <p>
-          Choose a location, select what interests you, and
-          uncover the secrets hidden in Earth's satellite data.
-        </p>
-      </section>
-
-      {/* Investigation content */}
-      <section className="investigation-container">
-
-        {/* Form */}
-        <div className="investigation-form">
-
-          <div className="form-heading">
-            <span>01</span>
-
-            <div>
-              <h2>Investigation Details</h2>
-              <p>Tell us what you want to explore.</p>
-            </div>
-          </div>
-
-          <form onSubmit={handleInvestigation}>
-
-            <label htmlFor="location">
-              Investigation Location
-            </label>
-
-            <div className="location-input location-container">
-              <span>⌖</span>
-
-              <input
-                id="location"
-                type="text"
-                placeholder={
-                  loadingLocations
-                    ? "Loading locations..."
-                    : "Search for a city or location..."
-                }
-                value={locationInput}
-                onChange={(e) => {
-                  setLocationInput(e.target.value);
-                  setSelectedLocation(null);
-                  setShowLocations(true);
-                  setMessage("");
-                  setInvestigationResults(null);
-                }}
-                onFocus={() => setShowLocations(true)}
-                disabled={loadingLocations || isInvestigating}
-                autoComplete="off"
-              />
-
-              {showLocations && locationInput.trim().length >= 2 && (
-                <div className="location-dropdown">
-
-                  {locationResults.length > 0 ? (
-                    locationResults.map((item) => (
-                      <button
-                        type="button"
-                        key={item.id}
-                        className="location-option"
-                        onClick={() => handleLocationSelect(item)}
-                      >
-                        <span>{item.name}</span>
-
-                        <small>
-                          {[
-                            item.admin1,
-                            item.country,
-                          ]
-                            .filter(Boolean)
-                            .join(", ")}
-                        </small>
-                      </button>
-                    ))
-                  ) : (
-                    <div className="location-status">
-                      {allLocations.length === 0
-                        ? "No location data available."
-                        : "No matching locations found."}
-                    </div>
-                  )}
-
-                </div>
-              )}
-            </div>
-
-            <label>
-              What would you like to investigate?
-            </label>
-
-            <div className="category-options">
-              {[
-                {
-                  name: "Land Changes",
-                  icon: "🌍",
-                  desc: "Land use and surface changes",
-                },
-                {
-                  name: "Deforestation",
-                  icon: "🌳",
-                  desc: "Forest loss and vegetation",
-                },
-                {
-                  name: "Water Bodies",
-                  icon: "💧",
-                  desc: "Changes in lakes and water",
-                },
-                {
-                  name: "Urban Growth",
-                  icon: "🏙️",
-                  desc: "Expansion of urban areas",
-                },
-                {
-                  name: "Climate Patterns",
-                  icon: "🌡️",
-                  desc: "Environmental patterns",
-                },
-                {
-                  name: "Natural Disasters",
-                  icon: "🌋",
-                  desc: "Environmental events",
-                },
-              ].map((item) => (
-                <button
-                  type="button"
-                  key={item.name}
-                  className={`category-card ${
-                    category === item.name ? "selected" : ""
-                  }`}
-                  onClick={() => {
-                    setCategory(item.name);
-                    setMessage("");
-                    setInvestigationResults(null);
-                  }}
-                  disabled={isInvestigating}
-                >
-                  <span className="category-icon">
-                    {item.icon}
-                  </span>
-
-                  <strong>{item.name}</strong>
-                  <small>{item.desc}</small>
-                </button>
-              ))}
-            </div>
-
-            <label htmlFor="start-date">
-              Observation Period
-            </label>
-
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: "12px",
-                marginBottom: "20px",
-              }}
-            >
-              <div>
-                <small
-                  style={{
-                    display: "block",
-                    color: "#a8bad0",
-                    marginBottom: "7px",
-                  }}
-                >
-                  Start date
-                </small>
-
-                <input
-                  id="start-date"
-                  type="date"
-                  value={startDate}
-                  max={endDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  disabled={isInvestigating}
-                  style={{
-                    width: "100%",
-                    padding: "11px",
-                    borderRadius: "8px",
-                    border: "1px solid #36516f",
-                    background: "#172b45",
-                    color: "#ffffff",
-                    colorScheme: "dark",
-                  }}
-                />
-              </div>
-
-              <div>
-                <small
-                  style={{
-                    display: "block",
-                    color: "#a8bad0",
-                    marginBottom: "7px",
-                  }}
-                >
-                  End date
-                </small>
-
-                <input
-                  type="date"
-                  value={endDate}
-                  min={startDate}
-                  max={new Date().toISOString().split("T")[0]}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  disabled={isInvestigating}
-                  style={{
-                    width: "100%",
-                    padding: "11px",
-                    borderRadius: "8px",
-                    border: "1px solid #36516f",
-                    background: "#172b45",
-                    color: "#ffffff",
-                    colorScheme: "dark",
-                  }}
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              className="start-investigation"
-              disabled={isInvestigating}
-            >
-              {isInvestigating
-                ? "Analyzing NASA Data..."
-                : "Start Investigation →"}
-            </button>
-
-            {message && (
-              <p
-                className="form-message"
-                role="status"
-                style={{
-                  overflowWrap: "anywhere",
-                }}
-              >
-                {message}
-              </p>
-            )}
-
-          </form>
+          <p>
+            {isSignificant
+              ? "The p-value is below 0.05, providing statistical evidence that the measured temperature trend is different from zero under the regression model."
+              : "The p-value is not below 0.05. The available data do not provide sufficient statistical evidence of a non-zero linear trend under this model."}
+          </p>
         </div>
+      </div>
 
-        {/* Preview */}
-        <div className="investigation-preview">
+      <TemperatureChart
+        annualData={result.annualData}
+        variable={variable}
+      />
+    </article>
+  );
+}
 
-          <div className="preview-top">
-            <div>
-              <span className="preview-label">
-                MISSION PREVIEW
-              </span>
+function InvestigationContent() {
+  const searchParams = useSearchParams();
 
-              <h3>Earth Explorer</h3>
-            </div>
+  const type = searchParams.get("type") || "";
+  const question = searchParams.get("question") || "";
 
-            <span className="satellite-icon">🛰️</span>
+  const typeLabel = typeLabels[type] || "Not specified";
+
+  const [analysis, setAnalysis] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const isSupportedQuestion =
+    type === "trend" &&
+    /qatar/i.test(question) &&
+    /(hot|temperatur|warm)/i.test(question);
+
+  useEffect(() => {
+    if (!isSupportedQuestion) {
+      setAnalysis(null);
+      setLoading(false);
+      setError("");
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function runAnalysis() {
+      setLoading(true);
+      setError("");
+      setAnalysis(null);
+
+      try {
+        const response = await fetch("/api/nasa/analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            startYear: 1981,
+            endYear: 2024,
+          }),
+          signal: controller.signal,
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+          throw new Error(
+            result.error || "Temperature analysis failed."
+          );
+        }
+
+        setAnalysis(result);
+      } catch (err) {
+        if (err.name !== "AbortError") {
+          console.error("Temperature analysis error:", err);
+
+          setError(
+            err.message || "Unable to complete the temperature analysis."
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    runAnalysis();
+
+    return () => {
+      controller.abort();
+    };
+  }, [isSupportedQuestion]);
+
+  const results = analysis?.results || [];
+
+  const significantCount = results.filter(
+    (result) => result.trend?.significant
+  ).length;
+
+  return (
+    <main className="investigation-page">
+      <nav className="investigation-navbar">
+        <a href="/" className="investigation-logo">
+          <span className="logo-icon">◈</span>
+          <span>Earth System Trend Detective</span>
+        </a>
+
+        <a href="/" className="back-home-link">
+          ← Back to Home
+        </a>
+      </nav>
+
+      <section className="investigation-content">
+        <header className="investigation-header">
+          <span className="investigation-badge">
+            YOUR RESEARCH QUESTION
+          </span>
+
+          <h1>Let's investigate.</h1>
+
+          <p>
+            Explore environmental measurements and discover what
+            the scientific evidence tells us.
+          </p>
+        </header>
+
+        <section className="submitted-question-card">
+          <div className="submitted-question-section">
+            <span className="detail-label">
+              INVESTIGATION TYPE
+            </span>
+
+            <h2>{typeLabel}</h2>
           </div>
 
-          {/* Actual NASA satellite map */}
-          <div className="earth-preview">
-            <SatelliteMap
-              location={selectedLocation}
-              category={category}
-            />
+          <div className="question-divider"></div>
+
+          <div className="submitted-question-section">
+            <span className="detail-label">
+              YOUR QUESTION
+            </span>
+
+            <p className="submitted-question-text">
+              {question || "No question was provided."}
+            </p>
           </div>
+        </section>
 
-          <div className="preview-info">
-            <div>
-              <span>LOCATION</span>
+        <section className="analysis-section">
+          <div className="dataset-section-heading">
+            <span className="detail-label">
+              SCIENTIFIC ANALYSIS
+            </span>
 
-              <strong>
-                {selectedLocation?.label || "Not selected"}
-              </strong>
-            </div>
-
-            <div>
-              <span>INVESTIGATION TYPE</span>
-              <strong>{category}</strong>
-            </div>
-          </div>
-
-          <div className="preview-note">
-            <span>✦</span>
+            <h2>What do the measurements tell us?</h2>
 
             <p>
-              Every location has a story. Use satellite observations
-              to uncover it.
+              We retrieve NASA Earth science measurements and
+              examine how temperature has changed over time.
+              Statistical analysis helps us determine whether
+              the observed trend is significant.
             </p>
           </div>
 
-        </div>
-      </section>
+          {loading && (
+            <div className="dataset-message">
+              <div className="loading-spinner"></div>
 
-      {/* NASA analysis results */}
-      {investigationResults && (
-        <section
-          style={{
-            maxWidth: "1100px",
-            width: "90%",
-            margin: "55px auto",
-            padding: "30px",
-            background: "#101d32",
-            border: "1px solid #263c57",
-            borderRadius: "16px",
-            color: "#ffffff",
-          }}
-        >
-          <div style={{ marginBottom: "25px" }}>
-            <span
-              style={{
-                color: "#69d5ff",
-                fontSize: "11px",
-                fontWeight: "700",
-                letterSpacing: "1.5px",
-              }}
-            >
-              NASA DATA ANALYSIS
-            </span>
+              <h3>Analyzing NASA temperature measurements</h3>
 
-            <h2 style={{ margin: "9px 0", fontSize: "25px" }}>
-              Investigation Results
-            </h2>
+              <p>
+                Retrieving observations and calculating annual
+                temperature trends and p-values.
+              </p>
 
-            <p style={{ color: "#a8bad0", fontSize: "13px" }}>
-              {investigationResults.location} ·{" "}
-              {formatDate(investigationResults.startDate)} –{" "}
-              {formatDate(investigationResults.endDate)}
-            </p>
-          </div>
+              <span>This may take a few moments.</span>
+            </div>
+          )}
 
-          {/* Summary statistics */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-              gap: "14px",
-              marginBottom: "30px",
-            }}
-          >
-            {[
-              {
-                label: "AVERAGE NDVI",
-                value: investigationResults.average.toFixed(4),
-              },
-              {
-                label: "HIGHEST NDVI",
-                value: investigationResults.highest.ndvi.toFixed(4),
-              },
-              {
-                label: "LOWEST NDVI",
-                value: investigationResults.lowest.ndvi.toFixed(4),
-              },
-              {
-                label: "OBSERVATIONS",
-                value: investigationResults.observations.length,
-              },
-            ].map((item) => (
-              <div
-                key={item.label}
-                style={{
-                  padding: "19px",
-                  background: "#172b45",
-                  border: "1px solid #263c57",
-                  borderRadius: "10px",
-                }}
-              >
-                <small
-                  style={{
-                    color: "#8da5bf",
-                    fontSize: "10px",
-                    letterSpacing: "1px",
-                  }}
-                >
-                  {item.label}
-                </small>
+          {!loading && error && (
+            <div className="dataset-message error-message">
+              <h3>We couldn't complete the analysis</h3>
+              <p>{error}</p>
+            </div>
+          )}
 
-                <div
-                  style={{
-                    color: "#69d5ff",
-                    fontSize: "25px",
-                    fontWeight: "700",
-                    marginTop: "9px",
-                  }}
-                >
-                  {item.value}
+          {!loading && !error && !isSupportedQuestion && (
+            <div className="dataset-message">
+              <h3>This analysis is not available yet</h3>
+
+              <p>
+                The current analysis module supports the Trend
+                Analysis question: "Is Qatar getting hotter?"
+                It retrieves Qatar temperature measurements
+                from NASA POWER and calculates their statistical
+                trends.
+              </p>
+
+              <p>
+                Other investigation questions and types will need
+                their own data retrieval and analysis methods.
+              </p>
+            </div>
+          )}
+
+          {!loading && !error && analysis && (
+            <>
+              <section className="analysis-overview">
+                <div className="analysis-overview-heading">
+                  <span className="detail-label">
+                    OVERALL FINDING
+                  </span>
+
+                  <h3>
+                    {significantCount === results.length &&
+                    results.length > 0
+                      ? "All three temperature measures are increasing."
+                      : "Temperature trends have been analyzed."}
+                  </h3>
+
+                  <p>
+                    The measurements from the sampled locations
+                    show the following results for{" "}
+                    {analysis.studyPeriod?.startYear}–{" "}
+                    {analysis.studyPeriod?.endYear}.
+                  </p>
+                </div>
+
+                <div className="overview-stats">
+                  <div className="overview-stat">
+                    <strong>
+                      {analysis.observationCount?.toLocaleString() || "—"}
+                    </strong>
+
+                    <span>Daily observations</span>
+                  </div>
+
+                  <div className="overview-stat">
+                    <strong>
+                      {analysis.variablesAnalyzed || results.length}
+                    </strong>
+
+                    <span>Temperature variables</span>
+                  </div>
+
+                  <div className="overview-stat">
+                    <strong>
+                      {significantCount}/{results.length}
+                    </strong>
+
+                    <span>Significant trends</span>
+                  </div>
+                </div>
+              </section>
+
+              <div className="results-heading">
+                <span className="detail-label">
+                  DETAILED RESULTS
+                </span>
+
+                <h3>Temperature trends</h3>
+
+                <p>
+                  Each result shows the direction of change,
+                  estimated rate of change, and statistical
+                  significance of the trend.
+                </p>
+              </div>
+
+              <div className="results-list">
+                {results.map((result) => (
+                  <ResultCard
+                    key={result.variable}
+                    result={result}
+                  />
+                ))}
+              </div>
+
+              <section className="methodology-card">
+                <span className="detail-label">
+                  HOW WAS THIS CALCULATED?
+                </span>
+
+                <h3>Understanding the analysis</h3>
+
+                <div className="methodology-item">
+                  <h4>1. Data collection</h4>
+
+                  <p>
+                    Daily temperature measurements were retrieved
+                    from NASA POWER for five sample locations in
+                    Qatar: Doha, Al Khor, Dukhan, Mesaieed, and
+                    Abu Samra.
+                  </p>
+                </div>
+
+                <div className="methodology-item">
+                  <h4>2. Annual averages</h4>
+
+                  <p>
+                    Daily measurements were combined into annual
+                    average temperatures for each variable.
+                  </p>
+                </div>
+
+                <div className="methodology-item">
+                  <h4>3. Linear regression</h4>
+
+                  <p>
+                    A linear regression model was used to estimate
+                    the direction and rate of temperature change
+                    over the study period.
+                  </p>
+                </div>
+
+                <div className="methodology-item">
+                  <h4>4. Statistical significance</h4>
+
+                  <p>
+                    A p-value was calculated to test whether the
+                    estimated linear trend differs from zero.
+                    A p-value below 0.05 is treated as statistically
+                    significant in this analysis.
+                  </p>
+                </div>
+              </section>
+
+              <section className="analysis-limitations">
+                <span className="detail-label">
+                  IMPORTANT SCIENTIFIC LIMITATIONS
+                </span>
+
+                <h3>How should we interpret these results?</h3>
+
+                <ul>
+                  <li>
+                    <strong>Spatial coverage:</strong> The result
+                    is an average of available measurements from
+                    five sample locations. It is not an
+                    area-weighted average of every location in Qatar.
+                  </li>
+
+                  <li>
+                    <strong>Statistical model:</strong> The p-values
+                    use ordinary linear regression and do not
+                    account for possible autocorrelation in annual
+                    temperatures. This can affect the reliability
+                    of statistical significance estimates.
+                  </li>
+
+                  <li>
+                    <strong>Correlation and causation:</strong> An
+                    increasing temperature trend does not, by
+                    itself, identify the causes of that increase.
+                  </li>
+
+                  <li>
+                    <strong>Interpretation:</strong> Statistical
+                    significance does not automatically mean that
+                    a change is large or practically important.
+                  </li>
+                </ul>
+              </section>
+
+              <div className="data-source-note">
+                <span>ⓘ</span>
+
+                <div>
+                  <strong>Data source: {analysis.dataSource}</strong>
+
+                  <p>
+                    Study period: {analysis.studyPeriod?.startYear}–
+                    {analysis.studyPeriod?.endYear}. Spatial method:{" "}
+                    {analysis.spatialMethod ||
+                      "Average of available measurements from five sample locations"}
+                    .
+                  </p>
                 </div>
               </div>
-            ))}
-          </div>
-
-          {/* NDVI observations */}
-          <div style={{ marginBottom: "30px" }}>
-            <h3 style={{ marginBottom: "17px" }}>
-              NDVI Observation Timeline
-            </h3>
-
-            <div
-              style={{
-                display: "flex",
-                flexDirection: "column",
-                gap: "17px",
-              }}
-            >
-              {investigationResults.observations.map((item) => (
-                <div key={item.date}>
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: "12px",
-                      marginBottom: "7px",
-                      fontSize: "13px",
-                    }}
-                  >
-                    <span style={{ color: "#c4d2e2" }}>
-                      {formatDate(item.date)}
-                    </span>
-
-                    <strong style={{ color: "#69d5ff" }}>
-                      {item.ndvi.toFixed(4)}
-                    </strong>
-                  </div>
-
-                  <div
-                    style={{
-                      height: "9px",
-                      background: "#263c57",
-                      borderRadius: "10px",
-                      overflow: "hidden",
-                    }}
-                  >
-                    <div
-                      style={{
-                        height: "100%",
-                        width: `${Math.max(0, Math.min(100, ((item.ndvi + 1) / 2) * 100))}%`,
-                        background: "#59c8f2",
-                        borderRadius: "10px",
-                      }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* First and last observation comparison */}
-          <div
-            style={{
-              padding: "20px",
-              background: "#172b45",
-              borderRadius: "10px",
-              marginBottom: "20px",
-            }}
-          >
-            <h3 style={{ marginBottom: "12px" }}>
-              Change Between First and Last Observation
-            </h3>
-
-            <p style={{ color: "#c4d2e2", fontSize: "14px" }}>
-              First observation ({formatDate(investigationResults.first.date)}):{" "}
-              <strong>{investigationResults.first.ndvi.toFixed(4)}</strong>
-            </p>
-
-            <p style={{ color: "#c4d2e2", fontSize: "14px" }}>
-              Last observation ({formatDate(investigationResults.last.date)}):{" "}
-              <strong>{investigationResults.last.ndvi.toFixed(4)}</strong>
-            </p>
-
-            <p
-              style={{
-                color: "#69d5ff",
-                fontSize: "20px",
-                fontWeight: "700",
-                marginTop: "12px",
-              }}
-            >
-              {investigationResults.change > 0 ? "+" : ""}
-              {investigationResults.change.toFixed(4)} NDVI
-            </p>
-          </div>
-
-          {/* Interpretation */}
-          <div
-            style={{
-              padding: "20px",
-              border: "1px solid #36516f",
-              borderRadius: "10px",
-              marginBottom: "22px",
-            }}
-          >
-            <span
-              style={{
-                color: "#69d5ff",
-                fontSize: "10px",
-                fontWeight: "700",
-                letterSpacing: "1px",
-              }}
-            >
-              DATA-BASED INTERPRETATION
-            </span>
-
-            <h3 style={{ margin: "10px 0" }}>
-              {interpretation.title}
-            </h3>
-
-            <p
-              style={{
-                color: "#c4d2e2",
-                fontSize: "14px",
-                lineHeight: "1.7",
-              }}
-            >
-              {interpretation.description}
-            </p>
-          </div>
-
-          {/* Quality information */}
-          <div
-            style={{
-              padding: "18px",
-              background: "#172b45",
-              borderRadius: "10px",
-              marginBottom: "20px",
-            }}
-          >
-            <h3 style={{ marginBottom: "12px" }}>
-              NASA Data Quality
-            </h3>
-
-            {investigationResults.observations.map((item) => (
-              <p
-                key={item.date}
-                style={{
-                  color: "#c4d2e2",
-                  fontSize: "12px",
-                  lineHeight: "1.7",
-                  marginBottom: "8px",
-                }}
-              >
-                <strong>{formatDate(item.date)}:</strong>{" "}
-                MODLAND: {item.quality}; VI usefulness: {item.usefulness}.
-              </p>
-            ))}
-          </div>
-
-          <p
-            style={{
-              color: "#8da5bf",
-              fontSize: "12px",
-              lineHeight: "1.7",
-            }}
-          >
-            Dataset: NASA MODIS MOD13Q1.061, 250 m, 16-day NDVI.
-            Measurements represent the selected coordinate, not the
-            entire city or surrounding region. NDVI is an indicator of
-            vegetation greenness, not direct proof of vegetation loss.
-            Quality information should be considered when interpreting
-            these observations.
-          </p>
-
-          <p
-            style={{
-              color: "#8da5bf",
-              fontSize: "11px",
-              marginTop: "12px",
-              overflowWrap: "anywhere",
-            }}
-          >
-            NASA task ID: {investigationResults.taskId}
-          </p>
+            </>
+          )}
         </section>
-      )}
+      </section>
 
-      <footer>
-        geoDetective © 2026 | NASA Space Apps Challenge
+      <footer className="investigation-footer">
+        <span>Earth System Trend Detective</span>
+        <span>Exploring Earth through scientific evidence.</span>
       </footer>
-
     </main>
+  );
+}
+
+export default function InvestigationPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="investigation-page">
+          <div className="investigation-loading">
+            Loading your investigation...
+          </div>
+        </main>
+      }
+    >
+      <InvestigationContent />
+    </Suspense>
   );
 }

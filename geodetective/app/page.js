@@ -1,114 +1,263 @@
 
-import Link from "next/link";
+"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import "./page.css";
 
-export default function Home() {
+const investigationTypes = [
+  {
+    id: "trend",
+    title: "Trend Analysis",
+    description:
+      "Investigate whether an environmental variable is increasing or decreasing over time.",
+    icon: "↗",
+    example: "Is Qatar becoming hotter?",
+  },
+  {
+    id: "relationship",
+    title: "Relationship Analysis",
+    description:
+      "Explore whether two environmental variables are related.",
+    icon: "⇄",
+    example: "Does deforestation affect rainfall?",
+  },
+  {
+    id: "explanation",
+    title: "Environmental Explanation",
+    description:
+      "Explore possible environmental factors behind a particular change.",
+    icon: "✧",
+    example: "Why is rainfall decreasing in this region?",
+  },
+];
+
+const exampleQuestions = [
+  "Is drought becoming more frequent?",
+  "Is global temperature increasing?",
+  "Does vegetation cover relate to rainfall?",
+];
+
+export default function HomePage() {
+  const router = useRouter();
+
+  const [selectedType, setSelectedType] = useState("");
+  const [question, setQuestion] = useState("");
+
+  function handleTypeSelection(typeId) {
+    setSelectedType(typeId);
+    setQuestion("");
+  }
+
+  function startInvestigation(event) {
+    event.preventDefault();
+
+    if (!selectedType || !question.trim()) {
+      return;
+    }
+
+    const params = new URLSearchParams({
+      type: selectedType,
+      question: question.trim(),
+    });
+
+    router.push(`/investigate?${params.toString()}`);
+  }
+
+  function handleExampleClick(example) {
+    if (!selectedType) {
+      setSelectedType("trend");
+    }
+
+    setQuestion(example);
+  }
+
+  const selectedInvestigation = investigationTypes.find(
+    (type) => type.id === selectedType
+  );
+
   return (
-    <main className="home">
+    <main className="homepage">
+      {/* NAVIGATION */}
+
       <nav className="navbar">
-        <Link href="/" className="logo">
-          <span className="logo-icon">✦</span>
-          geoDetective
-        </Link>
-
-        <div className="nav-links">
-          <Link href="/">Home</Link>
-          <Link href="#about">About</Link>
-          <Link href="#how-it-works">How It Works</Link>
+        <div className="navbar-logo">
+          <span className="logo-icon">◈</span>
+          <span className="navbar-label">
+            Earth System Trend Detective
+          </span>
         </div>
-
-        <Link href="/investigate" className="nav-button">
-          Start Exploring →
-        </Link>
       </nav>
 
+      {/* HERO */}
+
       <section className="hero">
-        <div className="hero-content">
-          <span className="tag">
-            ✦ NASA SPACE APPS CHALLENGE
-          </span>
+        <h1>
+          Ask questions. Discover what is happening to{" "}
+          <span>Earth.</span>
+        </h1>
 
-          <h1>
-            The Earth is full of
-            <span> mysteries.</span>
-            <br />
-            Let's investigate.
-          </h1>
+        {/* INVESTIGATION TYPE SELECTION */}
 
-          <p>
-            Explore our planet through satellite imagery,
-            discover hidden patterns, and investigate
-            environmental changes using the power of
-            Earth observation data.
+        <div className="question-container">
+          <h2 className="selection-heading">
+            What would you like to investigate?
+          </h2>
+
+          <p className="selection-description">
+            Choose the type of environmental investigation you want
+            to perform.
           </p>
 
-          <div className="hero-buttons">
-            <Link href="/investigate" className="primary-button">
-              Start Investigating →
-            </Link>
+          <div className="investigation-type-grid">
+            {investigationTypes.map((type) => {
+              const isSelected = selectedType === type.id;
 
-            <Link href="#about" className="secondary-button">
-              Discover More
-            </Link>
+              return (
+                <button
+                  key={type.id}
+                  type="button"
+                  className={`investigation-type-card ${
+                    isSelected ? "selected" : ""
+                  }`}
+                  onClick={() => handleTypeSelection(type.id)}
+                  aria-pressed={isSelected}
+                >
+                  <span className="type-icon">{type.icon}</span>
+
+                  <span className="type-title">
+                    {type.title}
+                  </span>
+
+                  <span className="type-description">
+                    {type.description}
+                  </span>
+
+                  <span className="type-example">
+                    Example: {type.example}
+                  </span>
+
+                  <span className="type-selection-indicator">
+                    {isSelected ? "✓ Selected" : "Select →"}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
-          <div className="hero-caption">
-            <span>✦</span> Powered by Earth observation data
-          </div>
+          {/* QUESTION INPUT */}
+
+          {selectedInvestigation && (
+            <form
+              className="question-form"
+              onSubmit={startInvestigation}
+            >
+              <div className="selected-type-message">
+                <span>✓</span>
+                You selected: {selectedInvestigation.title}
+              </div>
+
+              <label htmlFor="environmental-question">
+                What is your environmental question?
+              </label>
+
+              <textarea
+                id="environmental-question"
+                value={question}
+                onChange={(event) =>
+                  setQuestion(event.target.value)
+                }
+                placeholder={selectedInvestigation.example}
+                rows={3}
+                required
+              />
+
+              <button
+                type="submit"
+                className="start-button"
+                disabled={!question.trim()}
+              >
+                Start Investigation <span>→</span>
+              </button>
+            </form>
+          )}
         </div>
 
-        <div className="hero-visual">
-          <div className="earth-glow"></div>
-          <div className="earth">
-            <div className="earth-label">
-              <span className="live-dot"></span>
-              EARTH OBSERVATION
-            </div>
-          </div>
-          <div className="orbit orbit-one"></div>
-          <div className="orbit orbit-two"></div>
-          <div className="floating-card">
-            <span>🌍</span>
-            <div>
-              <strong>Our Planet</strong>
-              <small>One world. Endless discoveries.</small>
-            </div>
+        {/* EXAMPLE QUESTIONS */}
+
+        <div className="example-questions">
+          <span>Need inspiration?</span>
+
+          <div className="example-question-list">
+            {exampleQuestions.map((example) => (
+              <button
+                key={example}
+                type="button"
+                onClick={() => handleExampleClick(example)}
+              >
+                {example}
+              </button>
+            ))}
           </div>
         </div>
       </section>
 
-      <section className="about" id="about">
-        <span className="section-tag">EXPLORE • ANALYZE • DISCOVER</span>
-        <h2>Become an Earth Detective.</h2>
-        <p>
-          Use satellite observations to uncover clues,
-          understand environmental changes, and see
-          our planet from a completely different perspective.
-        </p>
+      {/* HOW IT WORKS */}
+
+      <section className="how-it-works">
+        <div className="section-heading">
+          <span>YOUR INVESTIGATION JOURNEY</span>
+          <h2>From questions to scientific discoveries</h2>
+          <p>
+            Turn environmental curiosity into evidence-based
+            investigations.
+          </p>
+        </div>
+
+        <div className="process-grid">
+          <div className="process-card">
+            <span className="process-number">01</span>
+            <h3>Choose Your Investigation</h3>
+            <p>
+              Select whether you want to investigate trends,
+              relationships, or environmental explanations.
+            </p>
+          </div>
+
+          <div className="process-card">
+            <span className="process-number">02</span>
+            <h3>Discover Variables</h3>
+            <p>
+              Identify relevant environmental measurements and
+              suitable NASA datasets.
+            </p>
+          </div>
+
+          <div className="process-card">
+            <span className="process-number">03</span>
+            <h3>Analyze the Data</h3>
+            <p>
+              Apply statistical methods to examine environmental
+              patterns and relationships.
+            </p>
+          </div>
+
+          <div className="process-card">
+            <span className="process-number">04</span>
+            <h3>Discover Insights</h3>
+            <p>
+              Explore visual results and evidence-based scientific
+              interpretations.
+            </p>
+          </div>
+        </div>
       </section>
 
-      <section className="features" id="how-it-works">
-        <div className="feature-card">
-          <span>🛰️</span>
-          <h3>Explore Satellite Data</h3>
-          <p>Discover our planet through Earth observation imagery.</p>
-        </div>
+      {/* FOOTER */}
 
-        <div className="feature-card">
-          <span>🔎</span>
-          <h3>Investigate Clues</h3>
-          <p>Examine locations and identify interesting environmental patterns.</p>
-        </div>
-
-        <div className="feature-card">
-          <span>🌎</span>
-          <h3>Uncover Discoveries</h3>
-          <p>Turn observations into meaningful insights about Earth.</p>
-        </div>
-      </section>
-
-      <footer>
-        <p>geoDetective © 2026 | NASA Space Apps Challenge</p>
+      <footer className="homepage-footer">
+        <span>Earth System Trend Detective</span>
+        <span>Exploring Earth through scientific evidence.</span>
       </footer>
     </main>
   );

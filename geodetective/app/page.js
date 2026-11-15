@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -10,46 +9,138 @@ const investigationTypes = [
     id: "trend",
     title: "Trend Analysis",
     description:
-      "Investigate whether an environmental variable is increasing or decreasing over time.",
+      "Discover how environmental variables change over time and whether those changes are significant.",
     icon: "↗",
     example: "Is Qatar becoming hotter?",
+    number: "01",
   },
   {
     id: "relationship",
     title: "Relationship Analysis",
     description:
-      "Explore whether two environmental variables are related.",
+      "Explore how different environmental variables relate to one another.",
     icon: "⇄",
-    example: "Does deforestation affect rainfall?",
+    example: "Does rainfall relate to temperature?",
+    number: "02",
   },
   {
     id: "explanation",
     title: "Environmental Explanation",
     description:
-      "Explore possible environmental factors behind a particular change.",
+      "Investigate possible environmental factors behind changes happening on Earth.",
     icon: "✧",
-    example: "Why is rainfall decreasing in this region?",
+    example: "Why is rainfall decreasing?",
+    number: "03",
   },
 ];
 
 const exampleQuestions = [
-  "Is drought becoming more frequent?",
-  "Is global temperature increasing?",
-  "Does vegetation cover relate to rainfall?",
+  // TREND ANALYSIS
+  {
+    question: "Is drought becoming more frequent?",
+    type: "trend",
+    scenarioId: "drought_trend",
+  },
+  {
+    question: "Is global temperature increasing?",
+    type: "trend",
+    scenarioId: "temperature_trend",
+  },
+
+  // RELATIONSHIP ANALYSIS
+  {
+    question: "Does rainfall relate to temperature?",
+    type: "relationship",
+    scenarioId: "rainfall_temperature",
+  },
+  {
+    question: "Does humidity relate to temperature?",
+    type: "relationship",
+    scenarioId: "humidity_temperature",
+  },
+  {
+    question: "Does dew point relate to air temperature?",
+    type: "relationship",
+    scenarioId: "dewpoint_temperature",
+  },
+  {
+    question: "Does solar radiation relate to temperature?",
+    type: "relationship",
+    scenarioId: "solar_temperature",
+  },
+  {
+    question: "Does wind speed relate to temperature?",
+    type: "relationship",
+    scenarioId: "wind_temperature",
+  },
+
+  // ENVIRONMENTAL EXPLANATION
+  {
+    question: "Why is rainfall decreasing?",
+    type: "explanation",
+    scenarioId: "rainfall_explanation",
+  },
+  {
+    question: "Why is temperature increasing?",
+    type: "explanation",
+    scenarioId: "temperature_explanation",
+  },
+  {
+    question: "Why is humidity changing?",
+    type: "explanation",
+    scenarioId: "humidity_explanation",
+  },
 ];
 
-export default function HomePage() {
+const processSteps = [
+  {
+    number: "01",
+    icon: "⌕",
+    title: "Ask a Question",
+    description:
+      "Describe an environmental problem or phenomenon you want to understand.",
+  },
+  {
+    number: "02",
+    icon: "◈",
+    title: "Discover Variables",
+    description:
+      "Find relevant Earth science variables and explore available NASA datasets.",
+  },
+  {
+    number: "03",
+    icon: "↗",
+    title: "Analyze the Data",
+    description:
+      "Examine environmental trends, statistical significance and relationships.",
+  },
+  {
+    number: "04",
+    icon: "◎",
+    title: "Explore Insights",
+    description:
+      "Understand patterns through interactive visualizations and scientific findings.",
+  },
+];
+
+const HomePage = () => {
   const router = useRouter();
 
   const [selectedType, setSelectedType] = useState("");
   const [question, setQuestion] = useState("");
+  const [selectedScenarioId, setSelectedScenarioId] = useState("");
 
-  function handleTypeSelection(typeId) {
+  const selectedInvestigation = investigationTypes.find(
+    (type) => type.id === selectedType,
+  );
+
+  const handleTypeSelection = (typeId) => {
     setSelectedType(typeId);
     setQuestion("");
-  }
+    setSelectedScenarioId("");
+  };
 
-  function startInvestigation(event) {
+  const startInvestigation = (event) => {
     event.preventDefault();
 
     if (!selectedType || !question.trim()) {
@@ -61,53 +152,113 @@ export default function HomePage() {
       question: question.trim(),
     });
 
-    router.push(`/investigate?${params.toString()}`);
-  }
-
-  function handleExampleClick(example) {
-    if (!selectedType) {
-      setSelectedType("trend");
+    if (selectedScenarioId) {
+      params.set("scenarioId", selectedScenarioId);
     }
 
-    setQuestion(example);
-  }
+    router.push(`/investigate?${params.toString()}`);
+  };
 
-  const selectedInvestigation = investigationTypes.find(
-    (type) => type.id === selectedType
-  );
+  const handleExampleClick = (example) => {
+    setSelectedType(example.type);
+    setQuestion(example.question);
+    setSelectedScenarioId(example.scenarioId);
+
+    document
+      .getElementById("investigation-form")
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  const handleQuestionChange = (event) => {
+    setQuestion(event.target.value);
+
+    // If the user edits a predefined question,
+    // remove its fixed scenario mapping.
+    setSelectedScenarioId("");
+  };
 
   return (
     <main className="homepage">
       {/* NAVIGATION */}
 
       <nav className="navbar">
-        <div className="navbar-logo">
-          <span className="logo-icon">◈</span>
-          <span className="navbar-label">
-            Earth System Trend Detective
-          </span>
+        <div className="navbar-inner">
+          <a href="/" className="navbar-logo">
+            <span className="logo-icon">◈</span>
+
+            <span className="navbar-brand">
+              <span className="brand-name">Earth System</span>
+              <span className="brand-subtitle">TREND DETECTIVE</span>
+            </span>
+          </a>
+
+          <div className="navbar-right">
+            <span className="nasa-label">
+              <span className="status-dot" />
+              POWERED BY NASA EARTH SCIENCE DATA
+            </span>
+          </div>
         </div>
       </nav>
 
       {/* HERO */}
 
       <section className="hero">
-        <h1>
-          Ask questions. Discover what is happening to{" "}
-          <span>Earth.</span>
-        </h1>
+        <div className="hero-content">
+          <div className="hero-eyebrow">
+            <span className="eyebrow-line" />
+            EXPLORE. ANALYZE. DISCOVER.
+            <span className="eyebrow-line" />
+          </div>
 
-        {/* INVESTIGATION TYPE SELECTION */}
+          <h1>
+            Understand the changes
+            <br />
+            <span>shaping our planet.</span>
+          </h1>
 
-        <div className="question-container">
-          <h2 className="selection-heading">
-            What would you like to investigate?
-          </h2>
-
-          <p className="selection-description">
-            Choose the type of environmental investigation you want
-            to perform.
+          <p className="hero-description">
+            Turn your environmental questions into scientific investigations.
+            Discover NASA data, uncover trends, and explore the relationships
+            behind Earth's changing systems.
           </p>
+
+          <div className="hero-highlights">
+            <span>
+              <span className="highlight-icon">◈</span>
+              NASA Earth Science Data
+            </span>
+
+            <span>
+              <span className="highlight-icon">↗</span>
+              Statistical Analysis
+            </span>
+
+            <span>
+              <span className="highlight-icon">◎</span>
+              Interactive Insights
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* INVESTIGATION BUILDER */}
+
+      <section className="investigation-section">
+        <div className="investigation-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="section-eyebrow">START EXPLORING</span>
+
+              <h2>What would you like to investigate?</h2>
+
+              <p>Choose an investigation type to get started.</p>
+            </div>
+
+            <div className="panel-decoration">✳</div>
+          </div>
+
+          {/* INVESTIGATION TYPES */}
 
           <div className="investigation-type-grid">
             {investigationTypes.map((type) => {
@@ -123,81 +274,111 @@ export default function HomePage() {
                   onClick={() => handleTypeSelection(type.id)}
                   aria-pressed={isSelected}
                 >
-                  <span className="type-icon">{type.icon}</span>
+                  <div className="type-card-top">
+                    <span className="type-number">{type.number}</span>
+                    <span className="type-icon">{type.icon}</span>
+                  </div>
 
-                  <span className="type-title">
-                    {type.title}
-                  </span>
+                  <span className="type-title">{type.title}</span>
 
-                  <span className="type-description">
-                    {type.description}
-                  </span>
+                  <span className="type-description">{type.description}</span>
 
                   <span className="type-example">
-                    Example: {type.example}
+                    Example: "{type.example}"
                   </span>
 
                   <span className="type-selection-indicator">
-                    {isSelected ? "✓ Selected" : "Select →"}
+                    {isSelected ? (
+                      <>
+                        <span>✓</span> Selected
+                      </>
+                    ) : (
+                      <>
+                        Select investigation <span>→</span>
+                      </>
+                    )}
                   </span>
                 </button>
               );
             })}
           </div>
 
-          {/* QUESTION INPUT */}
+          {/* QUESTION FORM */}
 
           {selectedInvestigation && (
             <form
+              id="investigation-form"
               className="question-form"
               onSubmit={startInvestigation}
             >
+              <div className="form-heading">
+                <div className="form-heading-icon">✧</div>
+
+                <div>
+                  <span className="form-step-label">YOUR INVESTIGATION</span>
+
+                  <h3>Tell us what you want to discover</h3>
+                </div>
+              </div>
+
               <div className="selected-type-message">
-                <span>✓</span>
-                You selected: {selectedInvestigation.title}
+                <span className="selected-check">✓</span>
+                {selectedInvestigation.title}
               </div>
 
               <label htmlFor="environmental-question">
-                What is your environmental question?
+                Describe your environmental question
               </label>
 
               <textarea
                 id="environmental-question"
                 value={question}
-                onChange={(event) =>
-                  setQuestion(event.target.value)
-                }
+                onChange={handleQuestionChange}
                 placeholder={selectedInvestigation.example}
                 rows={3}
+                maxLength={500}
                 required
               />
 
-              <button
-                type="submit"
-                className="start-button"
-                disabled={!question.trim()}
-              >
-                Start Investigation <span>→</span>
-              </button>
+              <div className="form-bottom">
+                <span className="input-hint">
+                  Be specific about the environmental change you want to
+                  investigate.
+                </span>
+
+                <button
+                  type="submit"
+                  className="start-button"
+                  disabled={!question.trim()}
+                >
+                  Start Investigation
+                  <span>→</span>
+                </button>
+              </div>
             </form>
           )}
-        </div>
 
-        {/* EXAMPLE QUESTIONS */}
+          {/* EXAMPLE QUESTIONS */}
 
-        <div className="example-questions">
-          <span>Need inspiration?</span>
+          <div className="example-questions">
+            <div className="example-heading">
+              <span className="example-sparkle">✳</span>
+              Need inspiration? Try asking:
+            </div>
 
-          <div className="example-question-list">
-            {exampleQuestions.map((example) => (
-              <button
-                key={example}
-                type="button"
-                onClick={() => handleExampleClick(example)}
-              >
-                {example}
-              </button>
-            ))}
+            <div className="example-question-list">
+              {exampleQuestions.map((example) => (
+                <button
+                  key={example.scenarioId}
+                  type="button"
+                  onClick={() => handleExampleClick(example)}
+                  className="example-chip"
+                >
+                  {example.question}
+                  <span>↗</span>
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -205,50 +386,33 @@ export default function HomePage() {
       {/* HOW IT WORKS */}
 
       <section className="how-it-works">
-        <div className="section-heading">
-          <span>YOUR INVESTIGATION JOURNEY</span>
-          <h2>From questions to scientific discoveries</h2>
-          <p>
-            Turn environmental curiosity into evidence-based
-            investigations.
-          </p>
-        </div>
+        <div className="how-inner">
+          <div className="section-heading">
+            <span className="section-eyebrow">THE PROCESS</span>
 
-        <div className="process-grid">
-          <div className="process-card">
-            <span className="process-number">01</span>
-            <h3>Choose Your Investigation</h3>
+            <h2>
+              From curiosity to
+              <span> discovery.</span>
+            </h2>
+
             <p>
-              Select whether you want to investigate trends,
-              relationships, or environmental explanations.
+              A simple path from environmental questions to evidence-based
+              scientific insights.
             </p>
           </div>
 
-          <div className="process-card">
-            <span className="process-number">02</span>
-            <h3>Discover Variables</h3>
-            <p>
-              Identify relevant environmental measurements and
-              suitable NASA datasets.
-            </p>
-          </div>
+          <div className="process-grid">
+            {processSteps.map((step) => (
+              <div className="process-card" key={step.number}>
+                <div className="process-card-top">
+                  <span className="process-number">{step.number}</span>
+                  <span className="process-icon">{step.icon}</span>
+                </div>
 
-          <div className="process-card">
-            <span className="process-number">03</span>
-            <h3>Analyze the Data</h3>
-            <p>
-              Apply statistical methods to examine environmental
-              patterns and relationships.
-            </p>
-          </div>
-
-          <div className="process-card">
-            <span className="process-number">04</span>
-            <h3>Discover Insights</h3>
-            <p>
-              Explore visual results and evidence-based scientific
-              interpretations.
-            </p>
+                <h3>{step.title}</h3>
+                <p>{step.description}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -256,9 +420,23 @@ export default function HomePage() {
       {/* FOOTER */}
 
       <footer className="homepage-footer">
-        <span>Earth System Trend Detective</span>
-        <span>Exploring Earth through scientific evidence.</span>
+        <div className="footer-inner">
+          <div className="footer-brand">
+            <span className="footer-logo">◈</span>
+
+            <div>
+              <strong>Earth System Trend Detective</strong>
+              <span>Exploring Earth through scientific evidence.</span>
+            </div>
+          </div>
+
+          <div className="footer-note">
+            An Earth science exploration experience
+          </div>
+        </div>
       </footer>
     </main>
   );
-}
+};
+
+export default HomePage;

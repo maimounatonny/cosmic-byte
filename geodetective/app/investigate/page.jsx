@@ -1,3 +1,4 @@
+
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
@@ -11,42 +12,53 @@ const typeLabels = {
 };
 
 const scenarioLabels = {
+  // Relationship scenarios: homepage ID -> backend scenario ID
   rainfall_temperature: {
     title: "Rainfall and Temperature",
     mainVariable: "T2M",
     comparisonVariable: "PRECTOTCORR",
+    apiScenarioId: "temperature-precipitation",
   },
   humidity_temperature: {
     title: "Humidity and Temperature",
     mainVariable: "T2M",
     comparisonVariable: "RH2M",
+    apiScenarioId: "temperature-humidity",
   },
   dewpoint_temperature: {
     title: "Dew Point and Temperature",
     mainVariable: "T2M",
     comparisonVariable: "T2MDEW",
+    apiScenarioId: "temperature-dew-point",
+  },
+  wind_temperature: {
+    title: "Wind Speed and Temperature",
+    mainVariable: "T2M",
+    comparisonVariable: "WS10M",
+    apiScenarioId: "temperature-wind",
   },
   solar_temperature: {
     title: "Solar Radiation and Temperature",
     mainVariable: "T2M",
     comparisonVariable: "ALLSKY_SFC_SW_DWN",
+    apiScenarioId: null,
   },
-  wind_temperature: {
-    title: "Wind Speed and Temperature",
-    mainVariable: "T2M",
-    comparisonVariable: "WS2M",
-  },
+
+  // Explanation scenarios
   rainfall_explanation: {
     title: "Possible Factors Related to Rainfall",
     mainVariable: "PRECTOTCORR",
+    apiScenarioId: "rainfall-change",
   },
   temperature_explanation: {
     title: "Possible Factors Related to Temperature",
     mainVariable: "T2M",
+    apiScenarioId: "heat-change",
   },
   humidity_explanation: {
     title: "Possible Factors Related to Humidity",
     mainVariable: "RH2M",
+    apiScenarioId: "humidity-change",
   },
 };
 
@@ -58,8 +70,9 @@ const variableLabels = {
   RH2M: "Relative Humidity",
   T2MDEW: "Dew Point Temperature",
   ALLSKY_SFC_SW_DWN: "Solar Radiation",
-  WS2M: "Wind Speed at 2 Metres",
+  WS10M: "Wind Speed at 10 Metres",
   QV2M: "Specific Humidity",
+  TS: "Earth Skin Temperature",
 };
 
 function formatNumber(value, decimals = 3) {
@@ -322,7 +335,8 @@ function CorrelationStrengthGuide() {
       <h3>How do we understand correlation?</h3>
       <p>
         Correlation measures how consistently two variables move in relation to
-        each other. Its value ranges from -1 to +1.
+        each other. Its value ranges from -1 to +1. The strength categories
+        below use the absolute value of the correlation.
       </p>
 
       <div style={{ display: "grid", gap: "9px" }}>
@@ -361,12 +375,35 @@ function ComparisonChart({ data, firstName, secondName }) {
     );
   }
 
-  const firstValues = data.map((item) =>
-    Number(item.firstAnomaly ?? item.mainAnomaly),
+  const firstValues = data.map((item) => {
+    const value =
+      item.firstAnomaly ?? item.mainAnomaly ?? item.variableAAnomaly;
+
+    return value === null || value === undefined || value === ""
+      ? null
+      : Number(value);
+  });
+
+  const secondValues = data.map((item) => {
+    const value =
+      item.secondAnomaly ?? item.variableAnomaly ?? item.variableBAnomaly;
+
+    return value === null || value === undefined || value === ""
+      ? null
+      : Number(value);
+  });
+
+  const hasValidValues = [...firstValues, ...secondValues].some(
+    (value) => value !== null && Number.isFinite(value),
   );
-  const secondValues = data.map((item) =>
-    Number(item.secondAnomaly ?? item.variableAnomaly),
-  );
+
+  if (!hasValidValues) {
+    return (
+      <div className="chart-empty">
+        The comparison measurements are unavailable.
+      </div>
+    );
+  }
 
   const width = 800;
   const height = 300;
@@ -378,7 +415,10 @@ function ComparisonChart({ data, firstName, secondName }) {
   const plotWidth = width - left - right;
   const plotHeight = height - top - bottom;
 
-  const valid = [...firstValues, ...secondValues].filter(Number.isFinite);
+  const valid = [...firstValues, ...secondValues].filter(
+    (value) => value !== null && Number.isFinite(value),
+  );
+
   const maxAbsolute = Math.max(2, ...valid.map(Math.abs));
 
   const getX = (index) =>
@@ -390,7 +430,9 @@ function ComparisonChart({ data, firstName, secondName }) {
   const makePoints = (values) =>
     values
       .map((value, index) =>
-        Number.isFinite(value) ? `${getX(index)},${getY(value)}` : null,
+        value !== null && Number.isFinite(value)
+          ? `${getX(index)},${getY(value)}`
+          : null,
       )
       .filter(Boolean)
       .join(" ");
@@ -493,35 +535,42 @@ function ComparisonChart({ data, firstName, secondName }) {
       </div>
 
       <p className="chart-caption">
-        Values are standardized anomalies, allowing variables with different
-        measurement units to be compared. Positive values are above their
-        expected trend; negative values are below it.
+        Values are standardized anomalies after removing the fitted linear
+        trend. Positive values indicate observations above the fitted trend;
+        negative values indicate observations below it.
       </p>
     </div>
   );
 }
 
-/* ---------------- NEW RELATIONSHIP ANALYSIS ---------------- */
+/* ---------------- RELATIONSHIP ANALYSIS ---------------- */
 
 function RelationshipResults({ result }) {
-  const comparison = result.comparison;
+  const comparison = result.results?.primaryComparison;
 
   if (!comparison) {
-    return <p>The API did not return a comparison result.</p>;
+    return (
+      <div className="dataset-message">
+        <h3>No comparison result was returned</h3>
+        <p>Please check the scenario API response.</p>
+      </div>
+    );
   }
 
-  const correlation = Number(comparison.correlation);
-  const validCorrelation = Number.isFinite(correlation);
-  const firstName =
-    comparison.firstVariable?.name ||
-    getVariableName(comparison.firstVariable?.code);
-  const secondName =
-    comparison.secondVariable?.name ||
-    getVariableName(comparison.secondVariable?.code);
+  const correlation = comparison.correlation;
 
-  const direction =
-    comparison.direction ||
-    (correlation > 0 ? "Positive" : correlation < 0 ? "Negative" : "No");
+  const validCorrelation =
+    correlation !== null &&
+    correlation !== undefined &&
+    Number.isFinite(Number(correlation));
+
+  const firstName =
+    comparison.variableA?.name || getVariableName(comparison.variableA?.id);
+
+  const secondName =
+    comparison.variableB?.name || getVariableName(comparison.variableB?.id);
+
+  const direction = comparison.direction || "Unavailable";
 
   return (
     <>
@@ -539,13 +588,17 @@ function RelationshipResults({ result }) {
 
         <div className="overview-stats">
           <div className="overview-stat">
-            <strong>{validCorrelation ? correlation.toFixed(3) : "N/A"}</strong>
+            <strong>
+              {validCorrelation ? Number(correlation).toFixed(3) : "N/A"}
+            </strong>
             <span>Pearson correlation (r)</span>
           </div>
+
           <div className="overview-stat">
             <strong>{comparison.strength || "Not available"}</strong>
             <span>Relationship strength</span>
           </div>
+
           <div className="overview-stat">
             <strong>{direction}</strong>
             <span>Relationship direction</span>
@@ -555,23 +608,20 @@ function RelationshipResults({ result }) {
 
       <section className="result-card">
         <span className="detail-label">WHAT DOES THIS MEAN?</span>
+
         <h3>
           {validCorrelation
-            ? `${comparison.strength || "Unknown"} ${direction.toLowerCase()} correlation`
+            ? `${comparison.strength || ""} ${direction.toLowerCase()} correlation`
             : "Correlation could not be calculated"}
         </h3>
+
         <p>
-          {validCorrelation
-            ? direction.toLowerCase() === "positive"
-              ? `${firstName} and ${secondName} tend to move in the same direction in the measured year-to-year fluctuations.`
-              : direction.toLowerCase() === "negative"
-                ? `${firstName} and ${secondName} tend to move in opposite directions in the measured year-to-year fluctuations.`
-                : "The analysis did not identify a clear positive or negative linear relationship."
-            : "There were not enough valid paired measurements to calculate a reliable correlation."}
+          {comparison.interpretation ||
+            "The correlation describes how the two variables move together."}
         </p>
 
         <p>
-          A correlation describes an association. It does not prove that one
+          Correlation describes an association. It does not prove that one
           variable causes the other to change.
         </p>
 
@@ -580,10 +630,12 @@ function RelationshipResults({ result }) {
             <span className="metric-label">Paired years</span>
             <strong>{comparison.sampleSize ?? "N/A"}</strong>
           </div>
+
           <div className="result-metric">
-            <span className="metric-label">Raw correlation</span>
-            <strong>{formatNumber(comparison.rawCorrelation)}</strong>
+            <span className="metric-label">Correlation method</span>
+            <strong>Detrended Pearson</strong>
           </div>
+
           <div className="result-metric">
             <span className="metric-label">Study period</span>
             <strong>
@@ -604,41 +656,45 @@ function RelationshipResults({ result }) {
   );
 }
 
-/* ---------------- NEW EXPLANATION ANALYSIS ---------------- */
+/* ---------------- ENVIRONMENTAL EXPLANATION ---------------- */
 
 function ExplanationResults({ result }) {
   const [selected, setSelected] = useState(null);
 
-  const results = result.results || [];
-  const mainName =
-    result.mainVariable?.name || getVariableName(result.mainVariable?.code);
+  const explanationResults = result.results?.comparisons || [];
+  const targetVariable = result.results?.targetVariable;
 
-  const selectedResult = results.find((item) => item.code === selected) || null;
+  const mainName =
+    targetVariable?.name || getVariableName(targetVariable?.id);
+
+  const selectedResult = explanationResults.find(
+    (item) => item.variableB?.id === selected,
+  );
 
   return (
     <>
       <section className="analysis-overview">
         <div className="analysis-overview-heading">
           <span className="detail-label">ENVIRONMENTAL EXPLANATION</span>
-          <h3>Possible relationships involving {mainName.toLowerCase()}</h3>
-          <p>
-            We examined other selected environmental variables to see which ones
-            have the strongest statistical relationships with{" "}
-            {mainName.toLowerCase()}.
-          </p>
+
+          <h3>{result.title || `Understanding ${mainName.toLowerCase()}`}</h3>
+
+          <p>{result.explanation || result.description}</p>
         </div>
 
         <div className="overview-stats">
           <div className="overview-stat">
-            <strong>{results.length}</strong>
+            <strong>{explanationResults.length}</strong>
             <span>Variables compared</span>
           </div>
+
           <div className="overview-stat">
             <strong>
               {result.studyPeriod?.startYear}–{result.studyPeriod?.endYear}
             </strong>
             <span>Study period</span>
           </div>
+
           <div className="overview-stat">
             <strong>{result.location || "—"}</strong>
             <span>Study location</span>
@@ -648,25 +704,38 @@ function ExplanationResults({ result }) {
 
       <div className="results-heading">
         <span className="detail-label">RELATED VARIABLES</span>
-        <h3>Which factors show the strongest relationships?</h3>
+
+        <h3>
+          Which factors show the strongest relationships with{" "}
+          {mainName.toLowerCase()}?
+        </h3>
+
         <p>
-          The list is ranked by the absolute correlation value, from strongest
-          to weakest. Select a variable to view its comparison graph.
+          The variables are ranked by the absolute detrended correlation value,
+          from strongest to weakest. Select a variable to view its comparison
+          graph.
         </p>
       </div>
 
       <div style={{ display: "grid", gap: "10px" }}>
-        {results.map((item, index) => {
-          const value = Number(item.correlation);
-          const valid = Number.isFinite(value);
-          const isSelected = selected === item.code;
+        {explanationResults.map((item, index) => {
+          const variable = item.variableB;
+          const value = item.correlation;
+
+          const valid =
+            variable?.id &&
+            value !== null &&
+            value !== undefined &&
+            Number.isFinite(Number(value));
+
+          const isSelected = selected === variable?.id;
 
           return (
             <button
               type="button"
-              key={item.code}
+              key={variable?.id || index}
               disabled={!valid}
-              onClick={() => setSelected(isSelected ? null : item.code)}
+              onClick={() => setSelected(isSelected ? null : variable?.id)}
               aria-pressed={isSelected}
               style={{
                 display: "flex",
@@ -685,8 +754,9 @@ function ExplanationResults({ result }) {
             >
               <span>
                 <strong>
-                  {index + 1}. {item.name || getVariableName(item.code)}
+                  {index + 1}. {variable?.name || "Unknown variable"}
                 </strong>
+
                 <span
                   style={{
                     display: "block",
@@ -695,19 +765,21 @@ function ExplanationResults({ result }) {
                     opacity: 0.7,
                   }}
                 >
-                  {item.code} · {item.unit || "Unit not specified"} ·{" "}
+                  {variable?.id || "Unknown code"} ·{" "}
+                  {variable?.unit || "Unit unavailable"} ·{" "}
                   {item.strength || "Unknown"} {item.direction || ""}
                 </span>
               </span>
+
               <strong style={{ fontSize: "18px", whiteSpace: "nowrap" }}>
-                {valid ? value.toFixed(3) : "N/A"}
+                {valid ? Number(value).toFixed(3) : "N/A"}
               </strong>
             </button>
           );
         })}
       </div>
 
-      {results.length === 0 && (
+      {explanationResults.length === 0 && (
         <div className="dataset-message">
           No related-variable results were returned.
         </div>
@@ -718,9 +790,9 @@ function ExplanationResults({ result }) {
       {selectedResult && (
         <section className="result-card" style={{ marginTop: "22px" }}>
           <span className="detail-label">SELECTED RELATIONSHIP</span>
+
           <h3>
-            {mainName} and{" "}
-            {selectedResult.name || getVariableName(selectedResult.code)}
+            {mainName} and {selectedResult.variableB?.name}
           </h3>
 
           <div className="result-metrics">
@@ -728,22 +800,24 @@ function ExplanationResults({ result }) {
               <span className="metric-label">Correlation</span>
               <strong>{formatNumber(selectedResult.correlation)}</strong>
             </div>
+
             <div className="result-metric">
               <span className="metric-label">Strength</span>
               <strong>{selectedResult.strength || "N/A"}</strong>
             </div>
+
             <div className="result-metric">
               <span className="metric-label">Direction</span>
               <strong>{selectedResult.direction || "N/A"}</strong>
             </div>
           </div>
 
+          <p>{selectedResult.interpretation}</p>
+
           <ComparisonChart
             data={selectedResult.comparisonData}
             firstName={mainName}
-            secondName={
-              selectedResult.name || getVariableName(selectedResult.code)
-            }
+            secondName={selectedResult.variableB?.name || "Related variable"}
           />
 
           <p>
@@ -953,8 +1027,14 @@ function InvestigationContent() {
     /(hot|temperatur|warm|heat|cool|cold|warming|cooling)/i.test(question);
 
   const isRelationship =
-    type === "relationship" && !!scenario?.comparisonVariable;
-  const isExplanation = type === "explanation" && !!scenario?.mainVariable;
+    type === "relationship" &&
+    !!scenario?.comparisonVariable &&
+    !!scenario?.apiScenarioId;
+
+  const isExplanation =
+    type === "explanation" &&
+    !!scenario?.mainVariable &&
+    !!scenario?.apiScenarioId;
 
   const isSupported = isTrendQuestion || isRelationship || isExplanation;
 
@@ -988,7 +1068,7 @@ function InvestigationContent() {
           endpoint = "/api/nasa/scenario";
           body = {
             type,
-            scenarioId,
+            scenarioId: scenario.apiScenarioId,
             question,
             startYear: 1981,
             endYear: 2024,
@@ -1043,9 +1123,12 @@ function InvestigationContent() {
     type,
     scenarioId,
     question,
+    scenario?.apiScenarioId,
   ]);
 
-  const results = analysis?.results || [];
+  const results = Array.isArray(analysis?.results)
+    ? analysis.results
+    : [];
 
   const significantCount = results.filter(
     (item) => item.trend?.significant,
@@ -1134,8 +1217,8 @@ function InvestigationContent() {
               <p>
                 Please select one of the predefined test questions on the
                 homepage. The current version supports temperature trend
-                analysis, five variable comparisons, and three explanation
-                scenarios.
+                analysis, four variable comparisons, and three environmental
+                explanation scenarios.
               </p>
             </div>
           )}
